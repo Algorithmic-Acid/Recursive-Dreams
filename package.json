@@ -1,0 +1,24 @@
+{
+  "name": "algorithmic-acid",
+  "version": "1.0.0",
+  "description": "Full-stack e-commerce platform with React, TypeScript, and Node.js",
+  "private": true,
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build:all": "npm run build:backend && npm run build:frontend"
+  },
+  "keywords": [
+    "ecommerce",
+    "react",
+    "typescript",
+    "nodejs",
+    "express",
+    "fullstack"
+  ],
+  "author": "",
+  "license": "MIT"
+}
