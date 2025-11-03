@@ -18,8 +18,10 @@ A modern, full-stack e-commerce platform built with React, TypeScript, Node.js, 
 - **Node.js** - Runtime
 - **Express** - Web framework
 - **TypeScript** - Type safety
-- **CORS** - Cross-origin resource sharing
-- **In-Memory Storage** - Product data (easily replaceable with MongoDB)
+- **MongoDB** - Database (with in-memory fallback)
+- **JWT** - Authentication
+- **bcryptjs** - Password hashing
+- **Mongoose** - ODM
 
 ## Project Structure
 
@@ -27,14 +29,26 @@ A modern, full-stack e-commerce platform built with React, TypeScript, Node.js, 
 Algorithmic_Acid/
 ├── backend/
 │   ├── src/
+│   │   ├── config/
+│   │   │   └── database.ts          # MongoDB connection
 │   │   ├── data/
 │   │   │   └── products.ts          # Product seed data
+│   │   ├── middleware/
+│   │   │   └── auth.ts              # JWT authentication
 │   │   ├── models/
-│   │   │   └── Product.ts           # Product model (in-memory)
+│   │   │   ├── Product.ts           # Product model
+│   │   │   ├── User.ts              # User model
+│   │   │   └── Order.ts             # Order model
 │   │   ├── routes/
-│   │   │   └── products.ts          # Product routes
+│   │   │   ├── products.ts          # Product routes
+│   │   │   ├── auth.ts              # Auth routes
+│   │   │   └── orders.ts            # Order routes
+│   │   ├── services/
+│   │   │   └── productService.ts    # Product service layer
 │   │   ├── types/
 │   │   │   └── index.ts             # TypeScript types
+│   │   ├── utils/
+│   │   │   └── jwt.ts               # JWT utilities
 │   │   └── server.ts                # Express server
 │   ├── package.json
 │   ├── tsconfig.json
@@ -47,13 +61,17 @@ Algorithmic_Acid/
 │   │   │   ├── Hero.tsx             # Hero section
 │   │   │   ├── ProductCard.tsx      # Product display
 │   │   │   ├── CartSidebar.tsx      # Shopping cart
+│   │   │   ├── Checkout.tsx         # Checkout modal
 │   │   │   └── Footer.tsx           # Footer
 │   │   ├── services/
-│   │   │   └── api.ts               # API client
+│   │   │   ├── api.ts               # API client
+│   │   │   └── orderApi.ts          # Order API
 │   │   ├── store/
-│   │   │   └── cartStore.ts         # Zustand cart store
+│   │   │   ├── cartStore.ts         # Zustand cart store
+│   │   │   └── authStore.ts         # Auth state
 │   │   ├── types/
-│   │   │   └── index.ts             # TypeScript types
+│   │   │   ├── index.ts             # TypeScript types
+│   │   │   └── order.ts             # Order types
 │   │   ├── App.tsx                  # Main app component
 │   │   ├── main.tsx                 # Entry point
 │   │   └── index.css                # Global styles
@@ -74,9 +92,10 @@ Algorithmic_Acid/
 
 ### Installation
 
-1. **Clone or navigate to the project directory**
+1. **Clone the repository**
    ```bash
-   cd "c:\Users\motoz\OneDrive\Documents\Algorithmic_Acid"
+   git clone https://github.com/Algorithmic-Acid/Recursive-Dreams.git
+   cd Recursive-Dreams
    ```
 
 2. **Install Backend Dependencies**
@@ -145,8 +164,13 @@ npm run preview
 - ✅ Search functionality
 - ✅ Category filtering
 - ✅ Shopping cart with persistent storage
-- ✅ Add/remove items from cart
-- ✅ Quantity adjustment
+- ✅ User authentication (JWT)
+- ✅ Order management system
+- ✅ Stock management
+- ✅ Checkout flow
+- ✅ Order history
+- ✅ Order cancellation
+- ✅ Admin role system
 - ✅ Real-time total calculation
 - ✅ Responsive design (mobile, tablet, desktop)
 - ✅ Toast notifications
@@ -154,17 +178,15 @@ npm run preview
 - ✅ Type-safe with TypeScript
 - ✅ RESTful API
 
-### Coming Soon (Production Features)
-- 🔲 User authentication (login/signup)
-- 🔲 MongoDB database integration
+### Coming Soon
+- 🔲 Login/Register UI components
 - 🔲 Payment processing (Stripe)
-- 🔲 Order management
-- 🔲 User profiles
-- 🔲 Order history
+- 🔲 Order tracking page
+- 🔲 User profile page
 - 🔲 Product reviews
 - 🔲 Admin dashboard
 - 🔲 Image uploads
-- 🔲 Inventory management
+- 🔲 Email notifications
 
 ## API Endpoints
 
@@ -173,9 +195,19 @@ npm run preview
 - `GET /api/products?category=shirts` - Get products by category
 - `GET /api/products?search=query` - Search products
 - `GET /api/products/:id` - Get single product
-- `POST /api/products` - Create product (admin)
-- `PUT /api/products/:id` - Update product (admin)
-- `DELETE /api/products/:id` - Delete product (admin)
+
+### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login user
+- `GET /api/auth/me` - Get current user (protected)
+
+### Orders
+- `POST /api/orders` - Create order (protected)
+- `GET /api/orders/my-orders` - Get user's orders (protected)
+- `GET /api/orders/:id` - Get single order (protected)
+- `PATCH /api/orders/:id/cancel` - Cancel order (protected)
+- `GET /api/orders` - Get all orders (admin only)
+- `PATCH /api/orders/:id/status` - Update order status (admin only)
 
 ### Health
 - `GET /api/health` - API health check
@@ -188,6 +220,7 @@ npm run dev      # Development with hot reload
 npm run build    # Compile TypeScript
 npm start        # Run compiled code
 npm run lint     # Lint code
+npm run seed     # Seed database
 ```
 
 ### Frontend Scripts
@@ -201,7 +234,7 @@ npm run lint     # Lint code
 ## Customization
 
 ### Adding Products
-Edit [backend/src/data/products.ts](backend/src/data/products.ts:5-109)
+Edit [backend/src/data/products.ts](backend/src/data/products.ts)
 
 ```typescript
 {
@@ -215,7 +248,7 @@ Edit [backend/src/data/products.ts](backend/src/data/products.ts:5-109)
 ```
 
 ### Changing Colors
-Edit [frontend/tailwind.config.js](frontend/tailwind.config.js:8-22)
+Edit [frontend/tailwind.config.js](frontend/tailwind.config.js)
 
 ```javascript
 colors: {
@@ -228,18 +261,14 @@ colors: {
 }
 ```
 
-### Database Integration (MongoDB)
-To use MongoDB instead of in-memory storage:
+## Documentation
 
-1. Install Mongoose:
-   ```bash
-   cd backend
-   npm install mongoose
-   ```
-
-2. Create Mongoose schema in `backend/src/models/Product.ts`
-3. Connect to MongoDB in `backend/src/server.ts`
-4. Replace in-memory methods with Mongoose queries
+- [START_HERE.md](START_HERE.md) - Quick launch guide
+- [QUICKSTART.md](QUICKSTART.md) - Detailed setup instructions
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture
+- [MONGODB_SETUP.md](MONGODB_SETUP.md) - MongoDB setup guide
+- [PHASE_3_COMPLETE.md](PHASE_3_COMPLETE.md) - Order system documentation
+- [PRODUCTION_ROADMAP.md](PRODUCTION_ROADMAP.md) - Feature roadmap
 
 ## Technologies Explained
 
