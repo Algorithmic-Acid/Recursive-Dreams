@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import productService from '../services/productService';
+import productService from '../services/productServicePg';
 import { ApiResponse } from '../types';
 
 const router = express.Router();

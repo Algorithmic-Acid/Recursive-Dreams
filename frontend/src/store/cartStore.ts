@@ -1,3 +1,4 @@
+32
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Product, CartItem } from '../types';
@@ -63,6 +64,7 @@ export const useCartStore = create<CartState>()(
       },
 
       getTotal: () => {
+        
         return get().items.reduce(
           (total, item) => total + item.product.price * item.quantity,
           0

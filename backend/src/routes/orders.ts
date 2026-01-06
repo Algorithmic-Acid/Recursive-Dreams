@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import OrderModel from '../models/Order';
-import ProductModel from '../models/ProductModel.mongoose';
+import OrderRepository from '../repositories/OrderRepository';
+import ProductRepository from '../repositories/ProductRepository';
 import { protect, admin } from '../middleware/auth';
 import { ApiResponse } from '../types';
 
@@ -33,14 +33,14 @@ router.post(
         return res.status(400).json(response);
       }
 
-      const { items, shippingAddress, paymentMethod, notes } = req.body;
+      const { items, shippingAddress, paymentMethod } = req.body;
 
       // Fetch product details and validate stock
       const orderItems = [];
       let total = 0;
 
       for (const item of items) {
-        const product = await ProductModel.findById(item.productId);
+        const product = await ProductRepository.findById(item.productId);
 
         if (!product) {
           const response: ApiResponse = {
@@ -59,33 +59,26 @@ router.post(
         }
 
         orderItems.push({
-          productId: product._id,
-          name: product.name,
-          price: product.price,
+          productId: product.id,
           quantity: item.quantity,
-          icon: product.icon,
+          product,
         });
 
         total += product.price * item.quantity;
-
-        // Update product stock
-        product.stock -= item.quantity;
-        await product.save();
       }
 
-      // Create order
-      const order = await OrderModel.create({
+      // Create order (stock will be deducted in repository)
+      const order = await OrderRepository.create({
         userId: req.user!.userId,
         items: orderItems,
         total,
         shippingAddress,
         paymentMethod: paymentMethod || 'card',
-        notes,
       });
 
       const response: ApiResponse = {
         success: true,
-        data: order.toJSON(),
+        data: order,
         message: 'Order created successfully',
       };
 
@@ -104,9 +97,7 @@ router.post(
 // Get user's orders (Protected)
 router.get('/my-orders', protect, async (req: Request, res: Response) => {
   try {
-    const orders = await OrderModel.find({ userId: req.user!.userId }).sort({
-      createdAt: -1,
-    });
+    const orders = await OrderRepository.findByUserId(req.user!.userId);
 
     const response: ApiResponse = {
       success: true,
@@ -127,7 +118,7 @@ router.get('/my-orders', protect, async (req: Request, res: Response) => {
 // Get single order (Protected)
 router.get('/:id', protect, async (req: Request, res: Response) => {
   try {
-    const order = await OrderModel.findById(req.params.id);
+    const order = await OrderRepository.findById(req.params.id);
 
     if (!order) {
       const response: ApiResponse = {
@@ -139,7 +130,7 @@ router.get('/:id', protect, async (req: Request, res: Response) => {
 
     // Ensure user can only access their own orders (unless admin)
     if (
-      order.userId.toString() !== req.user!.userId &&
+      order.userId !== req.user!.userId &&
       req.user!.role !== 'admin'
     ) {
       const response: ApiResponse = {
@@ -151,7 +142,7 @@ router.get('/:id', protect, async (req: Request, res: Response) => {
 
     const response: ApiResponse = {
       success: true,
-      data: order.toJSON(),
+      data: order,
     };
 
     res.json(response);
@@ -188,7 +179,7 @@ router.patch(
 
       const { status, trackingNumber } = req.body;
 
-      const order = await OrderModel.findById(req.params.id);
+      let order = await OrderRepository.updateStatus(req.params.id, status);
 
       if (!order) {
         const response: ApiResponse = {
@@ -198,16 +189,13 @@ router.patch(
         return res.status(404).json(response);
       }
 
-      order.status = status;
       if (trackingNumber) {
-        order.trackingNumber = trackingNumber;
+        order = await OrderRepository.updateTrackingNumber(req.params.id, trackingNumber) || order;
       }
-
-      await order.save();
 
       const response: ApiResponse = {
         success: true,
-        data: order.toJSON(),
+        data: order,
         message: 'Order status updated successfully',
       };
 
@@ -226,30 +214,15 @@ router.patch(
 // Get all orders (Admin only)
 router.get('/', protect, admin, async (req: Request, res: Response) => {
   try {
-    const { status, limit = 50, page = 1 } = req.query;
+    const { status } = req.query;
 
-    const query = status ? { status } : {};
-    const skip = (Number(page) - 1) * Number(limit);
-
-    const orders = await OrderModel.find(query)
-      .sort({ createdAt: -1 })
-      .limit(Number(limit))
-      .skip(skip)
-      .populate('userId', 'name email');
-
-    const total = await OrderModel.countDocuments(query);
+    const orders = status && typeof status === 'string'
+      ? await OrderRepository.findByStatus(status)
+      : await OrderRepository.findAll();
 
     const response: ApiResponse = {
       success: true,
-      data: {
-        orders,
-        pagination: {
-          total,
-          page: Number(page),
-          limit: Number(limit),
-          pages: Math.ceil(total / Number(limit)),
-        },
-      },
+      data: orders,
     };
 
     res.json(response);
@@ -266,7 +239,7 @@ router.get('/', protect, admin, async (req: Request, res: Response) => {
 // Cancel order (Protected)
 router.patch('/:id/cancel', protect, async (req: Request, res: Response) => {
   try {
-    const order = await OrderModel.findById(req.params.id);
+    const order = await OrderRepository.findById(req.params.id);
 
     if (!order) {
       const response: ApiResponse = {
@@ -277,7 +250,7 @@ router.patch('/:id/cancel', protect, async (req: Request, res: Response) => {
     }
 
     // Ensure user can only cancel their own orders
-    if (order.userId.toString() !== req.user!.userId) {
+    if (order.userId !== req.user!.userId) {
       const response: ApiResponse = {
         success: false,
         error: 'Not authorized to cancel this order',
@@ -294,21 +267,16 @@ router.patch('/:id/cancel', protect, async (req: Request, res: Response) => {
       return res.status(400).json(response);
     }
 
-    order.status = 'cancelled';
-    await order.save();
+    const updatedOrder = await OrderRepository.updateStatus(req.params.id, 'cancelled');
 
     // Restore product stock
     for (const item of order.items) {
-      const product = await ProductModel.findById(item.productId);
-      if (product) {
-        product.stock += item.quantity;
-        await product.save();
-      }
+      await ProductRepository.updateStock(item.productId, item.quantity);
     }
 
     const response: ApiResponse = {
       success: true,
-      data: order.toJSON(),
+      data: updatedOrder,
       message: 'Order cancelled successfully',
     };
 

@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(mkdir:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(if [ -d \"models\" ])",
+      "Bash(then ls -la models/)",
+      "Bash(else echo \"models directory does not exist\")",
+      "Bash(fi)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

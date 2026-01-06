@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import UserModel from '../models/User';
+import UserRepository from '../repositories/UserRepository';
 import { generateToken } from '../utils/jwt';
 import { protect } from '../middleware/auth';
 import { ApiResponse } from '../types';
@@ -30,7 +30,7 @@ router.post(
       const { name, email, password } = req.body;
 
       // Check if user already exists
-      const existingUser = await UserModel.findOne({ email });
+      const existingUser = await UserRepository.findByEmail(email);
       if (existingUser) {
         const response: ApiResponse = {
           success: false,
@@ -40,7 +40,7 @@ router.post(
       }
 
       // Create user
-      const user = await UserModel.create({
+      const user = await UserRepository.create({
         name,
         email,
         password,
@@ -48,15 +48,19 @@ router.post(
 
       // Generate token
       const token = generateToken({
-        userId: user._id.toString(),
+        userId: user.id,
         email: user.email,
-        role: user.role,
+        role: 'user',
       });
 
       const response: ApiResponse = {
         success: true,
         data: {
-          user: user.toJSON(),
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+          },
           token,
         },
         message: 'User registered successfully',
@@ -95,19 +99,9 @@ router.post(
 
       const { email, password } = req.body;
 
-      // Find user by email (include password for comparison)
-      const user = await UserModel.findOne({ email }).select('+password');
+      // Verify user credentials
+      const user = await UserRepository.verifyPassword(email, password);
       if (!user) {
-        const response: ApiResponse = {
-          success: false,
-          error: 'Invalid email or password',
-        };
-        return res.status(401).json(response);
-      }
-
-      // Check password
-      const isPasswordValid = await user.comparePassword(password);
-      if (!isPasswordValid) {
         const response: ApiResponse = {
           success: false,
           error: 'Invalid email or password',
@@ -117,15 +111,19 @@ router.post(
 
       // Generate token
       const token = generateToken({
-        userId: user._id.toString(),
+        userId: user.id,
         email: user.email,
-        role: user.role,
+        role: 'user',
       });
 
       const response: ApiResponse = {
         success: true,
         data: {
-          user: user.toJSON(),
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+          },
           token,
         },
         message: 'Login successful',
@@ -146,7 +144,7 @@ router.post(
 // Get current user (protected route)
 router.get('/me', protect, async (req: Request, res: Response) => {
   try {
-    const user = await UserModel.findById(req.user?.userId);
+    const user = await UserRepository.findById(req.user?.userId);
 
     if (!user) {
       const response: ApiResponse = {
@@ -158,7 +156,11 @@ router.get('/me', protect, async (req: Request, res: Response) => {
 
     const response: ApiResponse = {
       success: true,
-      data: user.toJSON(),
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
     };
 
     res.json(response);

@@ -1,13 +1,12 @@
+
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { connectDatabase } from './config/database';
+import { db } from './config/postgres';
 import productRoutes from './routes/products';
 import authRoutes from './routes/auth';
 import orderRoutes from './routes/orders';
-import ProductModel from './models/Product';
-import productService from './services/productService';
-import { initialProducts } from './data/products';
+import inventoryRoutes from './routes/inventory';
 
 // Load environment variables
 dotenv.config();
@@ -56,6 +55,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
 app.use('/api/products', productRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 // 404 Handler
 app.use((_req: Request, res: Response) => {
@@ -75,24 +75,24 @@ app.use((err: Error, _req: Request, res: Response, _next: any) => {
   });
 });
 
-// Initialize database with seed data
+// Initialize database
 const initializeApp = async () => {
   try {
-    // Connect to MongoDB (falls back to in-memory if connection fails)
-    await connectDatabase();
+    // Connect to PostgreSQL
+    await db.connect();
 
-    // Get storage type
-    const storageType = productService.getStorageType();
-    console.log(`Using ${storageType} storage`);
-
-    // Seed in-memory database if not using MongoDB
-    if (storageType === 'In-Memory') {
-      console.log('Initializing in-memory database with seed data...');
-      await ProductModel.seed(initialProducts);
-      console.log('In-memory database initialized successfully');
+    // Initialize schema if needed (for development)
+    if (process.env.INIT_SCHEMA === 'true') {
+      console.log('Initializing database schema...');
+      await db.initializeSchema();
+      console.log('✅ Database schema initialized');
     }
+
+    console.log('✅ PostgreSQL database ready');
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    console.error('❌ Failed to initialize database:', error);
+    console.error('Make sure PostgreSQL is running and configured correctly in .env');
+    process.exit(1);
   }
 };
 
@@ -105,9 +105,12 @@ const startServer = async () => {
 ╔════════════════════════════════════════╗
 ║   Algorithmic Acid API Server         ║
 ╠════════════════════════════════════════╣
+║   Database: PostgreSQL + AI            ║
 ║   Environment: ${process.env.NODE_ENV || 'development'}               ║
 ║   Port: ${PORT}                           ║
 ║   URL: http://localhost:${PORT}           ║
+╠════════════════════════════════════════╣
+║   Inventory AI: ENABLED                ║
 ╚════════════════════════════════════════╝
     `);
   });
