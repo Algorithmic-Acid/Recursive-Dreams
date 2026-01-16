@@ -242,12 +242,15 @@ class OrderRepository {
   }
 
   private async getOrderItems(orderId: string, client?: PoolClient): Promise<ICartItem[]> {
-    const queryFn = client || db;
-
-    const result = await queryFn.query<OrderItemRow>(
-      'SELECT * FROM order_items WHERE order_id = $1 ORDER BY created_at',
-      [orderId]
-    );
+    const result = client
+      ? await client.query<OrderItemRow>(
+          'SELECT * FROM order_items WHERE order_id = $1 ORDER BY created_at',
+          [orderId]
+        )
+      : await db.query<OrderItemRow>(
+          'SELECT * FROM order_items WHERE order_id = $1 ORDER BY created_at',
+          [orderId]
+        );
 
     return result.rows.map(row => ({
       productId: row.product_id,

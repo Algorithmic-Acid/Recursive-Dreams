@@ -96,7 +96,7 @@ class InventoryAIService {
       WHERE p.is_active = TRUE
     `;
 
-    const params: string[] = [];
+    const params: any[] = [];
 
     if (productIds && productIds.length > 0) {
       query += ' AND p.id = ANY($1)';

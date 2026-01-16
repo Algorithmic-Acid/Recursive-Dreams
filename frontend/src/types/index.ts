@@ -1,4 +1,4 @@
-export type ProductCategory = 'shirts' | 'music' | 'anime' | 'games' | 'software';
+export type ProductCategory = 'synthesizers' | 'midi_controllers' | 'effects_pedals' | 'hoodies' | 'shirts' | 'pants';
 
 export interface Product {
   id: string;
