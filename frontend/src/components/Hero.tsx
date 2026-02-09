@@ -14,11 +14,14 @@ export const Hero = () => {
           {'>'} SYSTEM_ONLINE {'<'}
         </div>
 
-        <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-black mb-4 sm:mb-6 animate-fade-in">
+        <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-black mb-2 sm:mb-3 animate-fade-in">
           <span className="bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 bg-clip-text text-transparent drop-shadow-[0_0_30px_rgba(0,255,255,0.5)]">
             VOID VENDOR
           </span>
         </h2>
+        <div className="text-sm sm:text-base md:text-lg text-cyan-400/60 tracking-[0.3em] font-light mb-4 sm:mb-6">
+          虚空販売 ・ ボイドベンダー
+        </div>
 
         <div className="text-cyan-400/80 font-mono text-[10px] sm:text-xs md:text-sm mb-4 sm:mb-6 tracking-wider">
           [ NEURAL MARKETPLACE :: v2.0.26 ]

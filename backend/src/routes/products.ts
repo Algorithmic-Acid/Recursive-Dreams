@@ -1,8 +1,130 @@
 import express, { Request, Response } from 'express';
 import productService from '../services/productServicePg';
+import { db } from '../config/postgres';
 import { ApiResponse } from '../types';
 
 const router = express.Router();
+
+// ============================================
+// FREE DOWNLOADS (Public) - Must be before /:id route!
+// ============================================
+
+// Get all active free downloads (public)
+router.get('/free-downloads/list', async (req: Request, res: Response) => {
+  try {
+    const result = await db.query(
+      `SELECT id, name, slug, description, version, file_size, filename, platform, download_count
+       FROM free_downloads
+       WHERE is_active = TRUE
+       ORDER BY created_at DESC`
+    );
+
+    const response: ApiResponse = {
+      success: true,
+      data: result.rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        description: row.description,
+        version: row.version,
+        fileSize: row.file_size,
+        filename: row.filename,
+        platform: row.platform,
+        downloadCount: row.download_count,
+      })),
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error('Get free downloads error:', error);
+    const response: ApiResponse = {
+      success: false,
+      error: 'Failed to fetch free downloads',
+    };
+    res.status(500).json(response);
+  }
+});
+
+// Enhanced IP extraction function (same as requestLogger)
+const getClientIP = (req: Request): string => {
+  const cfIP = req.headers['cf-connecting-ip'] as string;
+  if (cfIP) return cfIP.trim();
+
+  const realIP = req.headers['x-real-ip'] as string;
+  if (realIP) return realIP.trim();
+
+  const forwardedFor = req.headers['x-forwarded-for'] as string;
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+
+  if (req.ip) return req.ip;
+
+  const socketIP = (req.socket as any)?.remoteAddress;
+  if (socketIP) return socketIP;
+
+  return 'unknown';
+};
+
+// Increment download count with detailed tracking (public)
+router.post('/free-downloads/:id/download', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const clientIP = getClientIP(req);
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    // Get the filename for logging
+    const fileResult = await db.query(
+      'SELECT name, filename FROM free_downloads WHERE id = $1',
+      [id]
+    );
+
+    if (fileResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Download not found',
+      });
+    }
+
+    const download = fileResult.rows[0];
+
+    // Increment download count
+    await db.query(
+      'UPDATE free_downloads SET download_count = download_count + 1, updated_at = NOW() WHERE id = $1',
+      [id]
+    );
+
+    // Log to traffic_logs for unified tracking (will be picked up by piracy tracker)
+    await db.query(
+      `INSERT INTO traffic_logs (timestamp, method, path, status_code, response_time, ip_address, user_agent, user_id)
+       VALUES (NOW(), 'GET', $1, 200, 0, $2, $3, $4)`,
+      [`/downloads/${download.filename}`, clientIP, userAgent.substring(0, 200), (req as any).user?.userId || null]
+    );
+
+    console.log(`📥 Free VST download: ${download.name} from IP: ${clientIP}`);
+
+    const response: ApiResponse = {
+      success: true,
+      message: 'Download tracked',
+      data: {
+        filename: download.filename,
+      },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error('Track download error:', error);
+    const response: ApiResponse = {
+      success: false,
+      error: 'Failed to track download',
+    };
+    res.status(500).json(response);
+  }
+});
+
+// ============================================
+// PRODUCTS
+// ============================================
 
 // Get all products
 router.get('/', async (req: Request, res: Response) => {

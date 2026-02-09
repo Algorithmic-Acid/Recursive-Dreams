@@ -12,7 +12,7 @@ CREATE TYPE product_type AS ENUM ('digital', 'physical');
 CREATE TYPE product_category AS ENUM ('soundscapes', 'templates', 'music', 'software', 'shirts', 'hoodies', 'pants', 'effects_pedals', 'midi_controllers', 'synthesizers');
 CREATE TYPE order_status AS ENUM ('pending', 'processing', 'shipped', 'delivered', 'cancelled');
 CREATE TYPE payment_status AS ENUM ('pending', 'paid', 'failed', 'refunded');
-CREATE TYPE payment_method AS ENUM ('card', 'paypal', 'cash');
+CREATE TYPE payment_method AS ENUM ('card', 'paypal', 'cash', 'xmr');
 CREATE TYPE inventory_event_type AS ENUM ('purchase', 'sale', 'adjustment', 'return', 'damaged', 'restock');
 CREATE TYPE forecast_confidence AS ENUM ('low', 'medium', 'high');
 
@@ -98,6 +98,46 @@ CREATE TABLE suppliers (
 -- Add foreign key for supplier_id
 ALTER TABLE products ADD CONSTRAINT fk_products_supplier
     FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL;
+
+-- Free downloads table (for free VST plugins, etc.)
+CREATE TABLE free_downloads (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL,
+    description TEXT,
+    version VARCHAR(50) DEFAULT '1.0.0',
+    file_size VARCHAR(50),
+    filename VARCHAR(255) NOT NULL,
+    platform VARCHAR(100)[] DEFAULT ARRAY['Windows'],
+    download_count INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_free_downloads_active ON free_downloads(is_active);
+CREATE INDEX idx_free_downloads_slug ON free_downloads(slug);
+
+-- Traffic logs table for visitor analytics and network monitoring
+CREATE TABLE traffic_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    method VARCHAR(10) NOT NULL,
+    path TEXT NOT NULL,
+    status_code INTEGER NOT NULL,
+    response_time INTEGER NOT NULL,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for traffic logs performance
+CREATE INDEX idx_traffic_timestamp ON traffic_logs(timestamp DESC);
+CREATE INDEX idx_traffic_path ON traffic_logs(path);
+CREATE INDEX idx_traffic_status ON traffic_logs(status_code);
+CREATE INDEX idx_traffic_user ON traffic_logs(user_id);
+CREATE INDEX idx_traffic_method ON traffic_logs(method);
 
 -- Orders table
 CREATE TABLE orders (

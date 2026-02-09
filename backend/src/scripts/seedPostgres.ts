@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { db } from '../config/postgres';
 import bcrypt from 'bcryptjs';
 
@@ -104,6 +107,70 @@ const seedDatabase = async () => {
         optimal: 9999,
         supplier: digitalSupplier?.id,
         cost: 0,
+      },
+      {
+        name: 'Digital Rot',
+        slug: 'digital-rot',
+        category: 'software',
+        type: 'digital',
+        price: 25.00,
+        description: 'Your DAW is too clean. It lies to you. Digital Rot is the truth—the sound of your hard drive dying, your stream buffering, your memories corrupting. We modeled a scratched CD-ROM from 1999, a 56k modem screaming in a thunderstorm, and the void itself.',
+        icon: '💀',
+        stock: 9999,
+        threshold: 1,
+        optimal: 9999,
+        supplier: digitalSupplier?.id,
+        cost: 0,
+        metadata: {
+          pricing_variants: [
+            {
+              id: 'standard',
+              name: 'Pay $25',
+              price: 25.00,
+              description: 'Support the void'
+            },
+            {
+              id: 'steal',
+              name: 'Steal It',
+              price: 0,
+              description: 'Take it for free, no judgment'
+            }
+          ],
+          download_file: 'DigitalRot.zip',
+          is_downloadable: true
+        }
+      },
+      {
+        name: 'VHS Tracker',
+        slug: 'vhs-tracker',
+        category: 'software',
+        type: 'digital',
+        price: 15.00,
+        description: 'Emulates a VCR losing its tracking — the sound of actual failure. Horizontal dropout lines, color bleeding, tape hiss/rumble, and random sync loss glitches. 4 controls: Tracking Instability, Head Wear, Tape Age, Signal Strength.',
+        icon: '📼',
+        stock: 9999,
+        threshold: 1,
+        optimal: 9999,
+        supplier: digitalSupplier?.id,
+        cost: 0,
+        metadata: {
+          pricing_variants: [
+            {
+              id: 'pay',
+              name: 'Pay $15',
+              price: 15.00,
+              description: 'Support the void'
+            },
+            {
+              id: 'steal',
+              name: 'Steal It',
+              price: 0,
+              description: 'Take it for free, no judgment'
+            }
+          ],
+          download_file: 'VHSTracker.zip',
+          is_downloadable: true
+        }
       },
 
       // Physical - Shirts
@@ -250,8 +317,8 @@ const seedDatabase = async () => {
         `INSERT INTO products (
           name, slug, category, product_type, price, description, icon,
           stock_quantity, low_stock_threshold, optimal_stock_level,
-          supplier_id, cost_price, sku
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          supplier_id, cost_price, sku, metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           product.name,
           product.slug,
@@ -266,6 +333,7 @@ const seedDatabase = async () => {
           product.supplier || null,
           product.cost,
           product.slug.toUpperCase().replace(/-/g, ''),
+          JSON.stringify((product as any).metadata || {}),
         ]
       );
     }
@@ -389,10 +457,68 @@ const seedDatabase = async () => {
     `);
     console.log('✅ Initialized sales velocity tracking');
 
+    // Seed free downloads (VST plugins)
+    console.log('\nCreating free downloads...');
+    const freeDownloads = [
+      {
+        name: 'Formant Filter',
+        slug: 'formant-filter',
+        description: 'Vowel-shaping formant filter for creating vocal-like resonances and electronic voice effects',
+        version: '1.0.0',
+        fileSize: '2.1 MB',
+        filename: 'FormantFilter.zip',
+        platform: ['Windows'],
+      },
+      {
+        name: 'Lo-Fi Degrader',
+        slug: 'lofi-degrader',
+        description: 'Bit-crushing and sample rate reduction for vintage lo-fi vibes and retro digital textures',
+        version: '1.0.0',
+        fileSize: '1.8 MB',
+        filename: 'LoFiDegrader.zip',
+        platform: ['Windows'],
+      },
+      {
+        name: 'Tape Wobble',
+        slug: 'tape-wobble',
+        description: 'Analog tape warble and flutter emulation for warm, nostalgic tape machine character',
+        version: '1.0.0',
+        fileSize: '1.9 MB',
+        filename: 'TapeWobble.zip',
+        platform: ['Windows'],
+      },
+      {
+        name: 'GrainStorm',
+        slug: 'grainstorm',
+        description: 'Granular synthesis effect for transforming audio into evolving textures, glitches, and atmospheric soundscapes',
+        version: '1.0.0',
+        fileSize: '1.9 MB',
+        filename: 'GrainStorm.zip',
+        platform: ['Windows'],
+      },
+    ];
+
+    for (const download of freeDownloads) {
+      await db.query(
+        `INSERT INTO free_downloads (name, slug, description, version, file_size, filename, platform, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+         ON CONFLICT (slug) DO UPDATE SET
+           name = EXCLUDED.name,
+           description = EXCLUDED.description,
+           version = EXCLUDED.version,
+           file_size = EXCLUDED.file_size,
+           filename = EXCLUDED.filename,
+           platform = EXCLUDED.platform`,
+        [download.name, download.slug, download.description, download.version, download.fileSize, download.filename, download.platform]
+      );
+    }
+    console.log(`✅ Created ${freeDownloads.length} free downloads`);
+
     console.log('\n🎉 Database seeding completed successfully!\n');
     console.log('Summary:');
     console.log(`- ${supplierResult.rows.length} suppliers`);
     console.log(`- ${products.length} products`);
+    console.log(`- ${freeDownloads.length} free VST downloads`);
     console.log('- 2 users (1 admin, 1 test)');
     console.log('- 10 sample orders');
     console.log('\nYou can now:');

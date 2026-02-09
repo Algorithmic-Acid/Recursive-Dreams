@@ -1,9 +1,14 @@
 import express, { Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
+import Stripe from 'stripe';
 import OrderRepository from '../repositories/OrderRepository';
 import ProductRepository from '../repositories/ProductRepository';
 import { protect, admin } from '../middleware/auth';
 import { ApiResponse } from '../types';
+import dotenv from 'dotenv';
+
+dotenv.config();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
 
 const router = express.Router();
 
@@ -68,13 +73,47 @@ router.post(
       }
 
       // Create order (stock will be deducted in repository)
-      const order = await OrderRepository.create({
+      let order = await OrderRepository.create({
         userId: req.user!.userId,
         items: orderItems,
         total,
         shippingAddress,
         paymentMethod: paymentMethod || 'card',
       });
+
+      // If paymentIntentId is provided, verify with Stripe before marking as paid
+      const { paymentIntentId } = req.body;
+      if (paymentIntentId) {
+        // Only accept real Stripe payment intent IDs
+        if (!paymentIntentId.startsWith('pi_')) {
+          const response: ApiResponse = {
+            success: false,
+            error: 'Invalid payment reference',
+          };
+          return res.status(400).json(response);
+        }
+
+        // Verify with Stripe that payment actually succeeded
+        try {
+          const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+          if (paymentIntent.status === 'succeeded') {
+            order = await OrderRepository.updatePaymentStatus(order.id, 'paid', paymentIntentId) || order;
+          } else {
+            const response: ApiResponse = {
+              success: false,
+              error: `Payment not verified. Status: ${paymentIntent.status}`,
+            };
+            return res.status(400).json(response);
+          }
+        } catch (stripeErr: any) {
+          console.error('Stripe verification failed:', stripeErr.message);
+          const response: ApiResponse = {
+            success: false,
+            error: 'Could not verify payment with Stripe',
+          };
+          return res.status(400).json(response);
+        }
+      }
 
       const response: ApiResponse = {
         success: true,

@@ -1,5 +1,5 @@
 import { db } from '../config/postgres';
-import { IProduct, ProductCategory } from '../types';
+import { IProduct, ProductCategory, PricingVariant } from '../types';
 
 export interface ProductRow {
   id: string;
@@ -30,6 +30,12 @@ export interface ProductRow {
 
 class ProductRepository {
   private mapRowToProduct(row: ProductRow): IProduct {
+    // Extract pricing variants from metadata if present
+    const pricingVariants: PricingVariant[] | undefined =
+      row.metadata?.pricing_variants && Array.isArray(row.metadata.pricing_variants)
+        ? row.metadata.pricing_variants
+        : undefined;
+
     return {
       id: row.id,
       name: row.name,
@@ -39,6 +45,9 @@ class ProductRepository {
       icon: row.icon,
       stock: row.stock_quantity,
       image: row.image_url || undefined,
+      download_url: row.download_url || undefined,
+      file_size_mb: row.file_size_mb ? parseFloat(row.file_size_mb) : undefined,
+      pricing_variants: pricingVariants,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

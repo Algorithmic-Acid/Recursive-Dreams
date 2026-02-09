@@ -53,14 +53,15 @@ interface InventoryAlert {
 }
 
 class InventoryAIService {
-  private anthropic: Anthropic;
+  private anthropic: Anthropic | null = null;
 
   constructor() {
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is not set');
+    if (apiKey && apiKey !== 'your_anthropic_api_key_here') {
+      this.anthropic = new Anthropic({ apiKey });
+    } else {
+      console.warn('ANTHROPIC_API_KEY not configured - AI inventory features disabled');
     }
-    this.anthropic = new Anthropic({ apiKey });
   }
 
   /**
@@ -113,6 +114,11 @@ class InventoryAIService {
    * Generate AI-powered inventory forecast using Claude
    */
   async generateForecast(horizonDays: number = 30): Promise<ForecastResult[]> {
+    if (!this.anthropic) {
+      console.warn('AI forecasting not available - API key not configured');
+      return [];
+    }
+
     const inventoryData = await this.collectInventoryData();
 
     if (inventoryData.length === 0) {
@@ -439,6 +445,10 @@ Respond ONLY with valid JSON, no additional text.`;
    * Generate daily AI summary report
    */
   async generateDailySummaryReport(): Promise<string> {
+    if (!this.anthropic) {
+      return 'AI reporting not available - API key not configured';
+    }
+
     const inventoryData = await this.collectInventoryData();
     const forecasts = await this.getLatestForecasts();
     const alerts = await this.generateAlerts();

@@ -8,6 +8,9 @@ interface UserRow {
   password_hash: string;
   name: string;
   is_admin: boolean;
+  bio: string;
+  location: string;
+  avatar_url: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -19,6 +22,10 @@ class UserRepository {
       email: row.email,
       password: row.password_hash,
       name: row.name,
+      isAdmin: row.is_admin,
+      bio: row.bio || '',
+      location: row.location || '',
+      avatarUrl: row.avatar_url || '',
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -91,6 +98,21 @@ class UserRepository {
       values.push(passwordHash);
     }
 
+    if (userData.bio !== undefined) {
+      updates.push(`bio = $${paramCount++}`);
+      values.push(userData.bio);
+    }
+
+    if (userData.location !== undefined) {
+      updates.push(`location = $${paramCount++}`);
+      values.push(userData.location);
+    }
+
+    if (userData.avatarUrl !== undefined) {
+      updates.push(`avatar_url = $${paramCount++}`);
+      values.push(userData.avatarUrl);
+    }
+
     if (updates.length === 0) {
       return this.findById(id);
     }
@@ -123,6 +145,7 @@ class UserRepository {
 
   async verifyPassword(email: string, password: string): Promise<IUser | null> {
     const user = await this.findByEmail(email);
+
     if (!user) {
       return null;
     }
@@ -133,6 +156,45 @@ class UserRepository {
     }
 
     return user;
+  }
+
+  async findPublicProfile(id: string): Promise<{
+    id: string; name: string; bio: string; location: string;
+    avatarUrl: string; createdAt: Date;
+  } | null> {
+    const result = await db.query(
+      `SELECT id, name, bio, location, avatar_url, created_at
+       FROM users WHERE id = $1`,
+      [id]
+    );
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      name: row.name,
+      bio: row.bio || '',
+      location: row.location || '',
+      avatarUrl: row.avatar_url || '',
+      createdAt: row.created_at,
+    };
+  }
+
+  async updatePassword(userId: string, newPassword: string): Promise<boolean> {
+    try {
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+
+      const result = await db.query(
+        `UPDATE users
+         SET password_hash = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [passwordHash, userId]
+      );
+
+      return result.rowCount !== null && result.rowCount > 0;
+    } catch (error) {
+      console.error('Update password error:', error);
+      return false;
+    }
   }
 }
 

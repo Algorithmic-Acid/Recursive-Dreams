@@ -1,0 +1,11 @@
+# Void Vendor - Robots.txt
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://www.voidvendor.com/sitemap.xml
+
+# Disallow admin and user-specific pages
+Disallow: /admin
+Disallow: /my-purchases
+Disallow: /api/

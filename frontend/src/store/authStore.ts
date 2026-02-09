@@ -6,6 +6,7 @@ interface User {
   name: string;
   email: string;
   role: string;
+  avatarUrl?: string;
 }
 
 interface AuthState {
@@ -13,6 +14,7 @@ interface AuthState {
   token: string | null;
   login: (user: User, token: string) => void;
   logout: () => void;
+  updateProfile: (updates: Partial<User>) => void;
   isAuthenticated: () => boolean;
   isAdmin: () => boolean;
 }
@@ -29,6 +31,13 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         set({ user: null, token: null });
+      },
+
+      updateProfile: (updates: Partial<User>) => {
+        const current = get().user;
+        if (current) {
+          set({ user: { ...current, ...updates } });
+        }
       },
 
       isAuthenticated: () => {

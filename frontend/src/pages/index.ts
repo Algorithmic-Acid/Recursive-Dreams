@@ -1,0 +1,14 @@
+export { About } from './About';
+export { Admin } from './Admin';
+export { Contact } from './Contact';
+export { Donate } from './Donate';
+export { Downloads } from './Downloads';
+export { FAQ } from './FAQ';
+export { ForgotPassword } from './ForgotPassword';
+export { Forum } from './Forum';
+export { MyPurchases } from './MyPurchases';
+export { Privacy } from './Privacy';
+export { ProductDetail } from './ProductDetail';
+export { ResetPassword } from './ResetPassword';
+export { Terms } from './Terms';
+export { UserProfile } from './UserProfile';

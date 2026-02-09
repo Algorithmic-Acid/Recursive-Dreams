@@ -48,3 +48,16 @@ Thumbs.db
 index.html.old
 styles.css.old
 script.js.old
+
+# Deploy scripts (contain credentials)
+deploy*.ps1
+
+# Binary files
+*.zip
+
+# Temp files
+nul
+temp_index.b64
+
+# Claude Code
+.claude/

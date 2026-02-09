@@ -62,55 +62,65 @@ export const CartSidebar = ({ isOpen, onClose, onCheckout }: CartSidebarProps) =
             </div>
           ) : (
             <div className="space-y-3 sm:space-y-4">
-              {items.map((item) => (
-                <div
-                  key={item.product.id}
-                  className="bg-white/5 rounded-lg sm:rounded-xl p-3 sm:p-4 animate-slide-up border border-cyan-500/10"
-                >
-                  <div className="flex items-start justify-between mb-2 sm:mb-3">
-                    <div className="flex-1 pr-2">
-                      <h4 className="text-white font-semibold mb-1 text-sm sm:text-base line-clamp-1">
-                        {item.product.name}
-                      </h4>
-                      <p className="text-green-400 font-bold text-sm sm:text-base">
-                        ${item.product.price.toFixed(2)}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => removeItem(item.product.id)}
-                      className="p-1.5 sm:p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+              {items.map((item) => {
+                const itemPrice = item.selectedVariant?.price ?? item.product.price;
+                const itemKey = `${item.product.id}-${item.selectedVariant?.id || 'base'}`;
 
-                  {/* Quantity Controls */}
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <button
-                      onClick={() =>
-                        updateQuantity(item.product.id, item.quantity - 1)
-                      }
-                      className="p-1.5 sm:p-2 bg-cyan-600 hover:bg-cyan-500 rounded-full transition-colors"
-                    >
-                      <Minus className="w-3 h-3 sm:w-4 sm:h-4" />
-                    </button>
-                    <span className="text-white font-bold min-w-[24px] sm:min-w-[30px] text-center text-sm sm:text-base">
-                      {item.quantity}
-                    </span>
-                    <button
-                      onClick={() =>
-                        updateQuantity(item.product.id, item.quantity + 1)
-                      }
-                      className="p-1.5 sm:p-2 bg-cyan-600 hover:bg-cyan-500 rounded-full transition-colors"
-                    >
-                      <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
-                    </button>
-                    <span className="text-white/70 ml-auto text-xs sm:text-sm">
-                      ${(item.product.price * item.quantity).toFixed(2)}
-                    </span>
+                return (
+                  <div
+                    key={itemKey}
+                    className="bg-white/5 rounded-lg sm:rounded-xl p-3 sm:p-4 animate-slide-up border border-cyan-500/10"
+                  >
+                    <div className="flex items-start justify-between mb-2 sm:mb-3">
+                      <div className="flex-1 pr-2">
+                        <h4 className="text-white font-semibold mb-1 text-sm sm:text-base line-clamp-1">
+                          {item.product.name}
+                        </h4>
+                        {item.selectedVariant && (
+                          <p className="text-cyan-400 text-xs mb-1">
+                            {item.selectedVariant.name}
+                          </p>
+                        )}
+                        <p className="text-green-400 font-bold text-sm sm:text-base">
+                          ${itemPrice.toFixed(2)}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => removeItem(item.product.id, item.selectedVariant?.id)}
+                        className="p-1.5 sm:p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Quantity Controls */}
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      <button
+                        onClick={() =>
+                          updateQuantity(item.product.id, item.quantity - 1, item.selectedVariant?.id)
+                        }
+                        className="p-1.5 sm:p-2 bg-cyan-600 hover:bg-cyan-500 rounded-full transition-colors"
+                      >
+                        <Minus className="w-3 h-3 sm:w-4 sm:h-4" />
+                      </button>
+                      <span className="text-white font-bold min-w-[24px] sm:min-w-[30px] text-center text-sm sm:text-base">
+                        {item.quantity}
+                      </span>
+                      <button
+                        onClick={() =>
+                          updateQuantity(item.product.id, item.quantity + 1, item.selectedVariant?.id)
+                        }
+                        className="p-1.5 sm:p-2 bg-cyan-600 hover:bg-cyan-500 rounded-full transition-colors"
+                      >
+                        <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+                      </button>
+                      <span className="text-white/70 ml-auto text-xs sm:text-sm">
+                        ${(itemPrice * item.quantity).toFixed(2)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
