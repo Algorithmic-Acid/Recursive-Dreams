@@ -2,6 +2,13 @@ import { Request, Response, NextFunction } from 'express';
 import { db } from '../config/postgres';
 import { verifyToken } from '../utils/jwt';
 
+// Admin IP whitelist - traffic from these IPs is always logged as admin
+// regardless of whether a JWT is present (catches page loads, public API calls, etc.)
+// Set ADMIN_IPS in .env as a comma-separated list: ADMIN_IPS=1.2.3.4,5.6.7.8
+const ADMIN_IP_WHITELIST = new Set(
+  (process.env.ADMIN_IPS || '').split(',').map(ip => ip.trim()).filter(Boolean)
+);
+
 // Cleanup old traffic logs (older than 3 months)
 export const cleanupOldTrafficLogs = async (): Promise<number> => {
   try {
@@ -170,7 +177,12 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
     // Detect admin from JWT directly so it works on ALL routes,
     // including public endpoints and the login request itself
     const detectAdmin = (): { isAdmin: boolean; email: string | null; userId: string | null } => {
-      // First check if protect middleware already decoded the user
+      // Check IP whitelist first — covers page loads and public API calls
+      // that don't carry an Authorization header
+      if (ADMIN_IP_WHITELIST.has(clientIP)) {
+        return { isAdmin: true, email: null, userId: null };
+      }
+      // Check if protect middleware already decoded the user
       const protectedUser = (req as any).user;
       if (protectedUser?.role === 'admin') {
         return { isAdmin: true, email: protectedUser.email, userId: protectedUser.userId };
