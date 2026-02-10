@@ -2,10 +2,23 @@
 User-agent: *
 Allow: /
 
-# Sitemap
+# Sitemap location
 Sitemap: https://www.voidvendor.com/sitemap.xml
 
-# Disallow admin and user-specific pages
+# Crawl delay (be nice to our server)
+Crawl-delay: 1
+
+# Disallow admin and auth pages
 Disallow: /admin
-Disallow: /my-purchases
-Disallow: /api/
+Disallow: /reset-password
+Disallow: /forgot-password
+
+# Allow major search engines
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /

@@ -973,6 +973,71 @@ router.delete('/traffic/logs', async (req: Request, res: Response) => {
   }
 });
 
+// Get admin traffic logs (separate from regular user/guest monitoring)
+router.get('/traffic/admin', async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = (page - 1) * limit;
+
+    // Get total count
+    const countResult = await db.query('SELECT COUNT(*) as count FROM admin_traffic_logs');
+    const total = parseInt(countResult.rows[0].count);
+
+    // Get paginated admin traffic
+    const result = await db.query(`
+      SELECT
+        atl.id,
+        atl.timestamp,
+        atl.method,
+        atl.path,
+        atl.status_code,
+        atl.response_time,
+        atl.ip_address,
+        atl.user_agent,
+        atl.admin_email,
+        u.name as admin_name
+      FROM admin_traffic_logs atl
+      LEFT JOIN users u ON atl.user_id = u.id
+      ORDER BY atl.timestamp DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    const response: ApiResponse = {
+      success: true,
+      data: {
+        logs: result.rows.map(row => ({
+          id: row.id,
+          timestamp: row.timestamp,
+          method: row.method,
+          path: row.path,
+          statusCode: row.status_code,
+          responseTime: row.response_time,
+          ipAddress: row.ip_address,
+          userAgent: row.user_agent,
+          adminEmail: row.admin_email,
+          adminName: row.admin_name,
+        })),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error('Get admin traffic logs error:', error);
+    const response: ApiResponse = {
+      success: false,
+      error: 'Failed to fetch admin traffic logs',
+    };
+    res.status(500).json(response);
+  }
+});
+
 // ============================================
 // SECURITY / VOID TRAP
 // ============================================

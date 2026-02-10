@@ -163,6 +163,8 @@ export const Admin = () => {
   const [trafficLogs, setTrafficLogs] = useState<RequestLog[]>([]);
   const [trafficTrends, setTrafficTrends] = useState<TrafficTrend[]>([]);
   const [trendInterval, setTrendInterval] = useState<'hourly' | 'daily'>('hourly');
+  const [trafficType, setTrafficType] = useState<'user' | 'admin'>('user');
+  const [adminTrafficLogs, setAdminTrafficLogs] = useState<any[]>([]);
 
   // Security state
   const [blacklistData, setBlacklistData] = useState<any>(null);
@@ -269,12 +271,35 @@ export const Admin = () => {
     }
   };
 
+  const fetchAdminTrafficData = async () => {
+    const token = localStorage.getItem('token');
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/traffic/admin?limit=50`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setAdminTrafficLogs(data.data.logs);
+      }
+    } catch (error) {
+      console.error('Failed to fetch admin traffic data:', error);
+      toast.error('Failed to load admin traffic data');
+    }
+  };
+
   // Fetch traffic data when traffic tab is active
   useEffect(() => {
     if (activeTab === 'traffic') {
-      fetchTrafficData();
+      if (trafficType === 'user') {
+        fetchTrafficData();
+      } else {
+        fetchAdminTrafficData();
+      }
     }
-  }, [activeTab, trendInterval]);
+  }, [activeTab, trendInterval, trafficType]);
 
   // Fetch orders when orders tab is active
   useEffect(() => {
@@ -1605,7 +1630,33 @@ export const Admin = () => {
 
             {/* Recent Request Logs Table */}
             <div className="bg-dark-card border border-cyan-500/20 rounded-lg p-3 sm:p-6">
-              <h3 className="text-sm sm:text-lg font-bold text-cyan-400 mb-3 sm:mb-4 font-mono">RECENT_LOGS</h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 sm:mb-4 gap-2">
+                <h3 className="text-sm sm:text-lg font-bold text-cyan-400 font-mono">RECENT_LOGS</h3>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTrafficType('user')}
+                    className={`px-2 sm:px-3 py-1 rounded font-mono text-[10px] sm:text-xs ${
+                      trafficType === 'user'
+                        ? 'bg-cyan-500 text-white'
+                        : 'bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20'
+                    }`}
+                  >
+                    USER_TRAFFIC
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTrafficType('admin')}
+                    className={`px-2 sm:px-3 py-1 rounded font-mono text-[10px] sm:text-xs ${
+                      trafficType === 'admin'
+                        ? 'bg-purple-500 text-white'
+                        : 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20'
+                    }`}
+                  >
+                    ADMIN_TRAFFIC
+                  </button>
+                </div>
+              </div>
               <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
                 <table className="w-full min-w-[400px]">
                   <thead>
@@ -1616,11 +1667,13 @@ export const Admin = () => {
                       <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-cyan-400 font-mono text-[10px] sm:text-sm">STATUS</th>
                       <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-cyan-400 font-mono text-[10px] sm:text-sm hidden sm:table-cell">MS</th>
                       <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-cyan-400 font-mono text-[10px] sm:text-sm hidden md:table-cell">IP</th>
-                      <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-cyan-400 font-mono text-[10px] sm:text-sm hidden lg:table-cell">USER</th>
+                      <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-cyan-400 font-mono text-[10px] sm:text-sm hidden lg:table-cell">
+                        {trafficType === 'admin' ? 'ADMIN' : 'USER'}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {trafficLogs.slice(0, 15).map((log) => {
+                    {trafficType === 'user' ? trafficLogs.slice(0, 15).map((log) => {
                       const getMethodColor = (method: string) => {
                         const colors: Record<string, string> = {
                           GET: 'text-cyan-400 bg-cyan-500/10',
@@ -1674,6 +1727,64 @@ export const Admin = () => {
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-white/60 font-mono text-[10px] sm:text-xs hidden lg:table-cell">
                             <div className="truncate max-w-[100px]" title={log.userName || 'Guest'}>
                               {log.userName || log.userId ? (log.userName || 'User') : 'Guest'}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }) : adminTrafficLogs.slice(0, 15).map((log) => {
+                      const getMethodColor = (method: string) => {
+                        const colors: Record<string, string> = {
+                          GET: 'text-cyan-400 bg-cyan-500/10',
+                          POST: 'text-green-400 bg-green-500/10',
+                          PUT: 'text-orange-400 bg-orange-500/10',
+                          DELETE: 'text-red-400 bg-red-500/10',
+                          PATCH: 'text-purple-400 bg-purple-500/10'
+                        };
+                        return colors[method] || 'text-gray-400 bg-gray-500/10';
+                      };
+
+                      const getStatusColor = (status: number) => {
+                        if (status < 300) return 'text-green-400 bg-green-500/10';
+                        if (status < 400) return 'text-blue-400 bg-blue-500/10';
+                        if (status < 400) return 'text-orange-400 bg-orange-500/10';
+                        return 'text-red-400 bg-red-500/10';
+                      };
+
+                      const getPerformanceColor = (ms: number) => {
+                        if (ms < 100) return 'text-green-400';
+                        if (ms < 500) return 'text-yellow-400';
+                        return 'text-red-400';
+                      };
+
+                      return (
+                        <tr key={log.id} className="border-b border-white/5 hover:bg-white/5">
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-white/60 font-mono text-[10px] sm:text-xs">
+                            {new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3">
+                            <span className={`px-1 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-mono ${getMethodColor(log.method)}`}>
+                              {log.method.slice(0, 3)}
+                            </span>
+                          </td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-white/70 font-mono text-[10px] sm:text-xs max-w-[100px] sm:max-w-xs truncate">
+                            {log.path}
+                          </td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3">
+                            <span className={`px-1 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-mono ${getStatusColor(log.statusCode)}`}>
+                              {log.statusCode}
+                            </span>
+                          </td>
+                          <td className={`px-2 sm:px-4 py-2 sm:py-3 font-mono text-[10px] sm:text-xs hidden sm:table-cell ${getPerformanceColor(log.responseTime)}`}>
+                            {log.responseTime}ms
+                          </td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-white/50 font-mono text-[10px] sm:text-xs hidden md:table-cell">
+                            <div className="truncate max-w-[120px]" title={log.ipAddress}>
+                              {log.ipAddress}
+                            </div>
+                          </td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-white/60 font-mono text-[10px] sm:text-xs hidden lg:table-cell">
+                            <div className="truncate max-w-[100px]" title={log.adminEmail || log.adminName || 'Admin'}>
+                              <span className="text-purple-400">{log.adminName || log.adminEmail || 'Admin'}</span>
                             </div>
                           </td>
                         </tr>

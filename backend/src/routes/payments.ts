@@ -183,6 +183,127 @@ router.get('/config', (_req: Request, res: Response) => {
   res.json(response);
 });
 
+// Create donation payment intent (no authentication required)
+router.post(
+  '/donate',
+  [
+    body('amount').isFloat({ min: 1 }).withMessage('Amount must be at least $1'),
+    body('donorName').optional().isString().withMessage('Donor name must be a string'),
+    body('donorEmail').optional().isEmail().withMessage('Invalid email'),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        const response: ApiResponse = {
+          success: false,
+          error: errors.array()[0].msg,
+        };
+        return res.status(400).json(response);
+      }
+
+      const { amount, donorName, donorEmail } = req.body;
+
+      // Stripe expects amount in cents
+      const amountInCents = Math.round(amount * 100);
+
+      // Create PaymentIntent for donation
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amountInCents,
+        currency: 'usd',
+        automatic_payment_methods: {
+          enabled: true,
+        },
+        metadata: {
+          type: 'donation',
+          donorName: donorName || 'Anonymous',
+          donorEmail: donorEmail || '',
+        },
+        description: `Void Vendor Donation - ${donorName || 'Anonymous'}`,
+      });
+
+      const response: ApiResponse = {
+        success: true,
+        data: {
+          clientSecret: paymentIntent.client_secret,
+          paymentIntentId: paymentIntent.id,
+          amount: amount,
+        },
+      };
+
+      res.json(response);
+    } catch (error: any) {
+      console.error('Create donation intent error:', error);
+      const response: ApiResponse = {
+        success: false,
+        error: error.message || 'Failed to create donation payment',
+      };
+      res.status(500).json(response);
+    }
+  }
+);
+
+// Log successful donation (called after payment succeeds)
+router.post(
+  '/donate/confirm',
+  [
+    body('paymentIntentId').notEmpty().withMessage('Payment Intent ID is required'),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        const response: ApiResponse = {
+          success: false,
+          error: errors.array()[0].msg,
+        };
+        return res.status(400).json(response);
+      }
+
+      const { paymentIntentId } = req.body;
+
+      // Verify payment status with Stripe
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+      if (paymentIntent.status !== 'succeeded') {
+        const response: ApiResponse = {
+          success: false,
+          error: `Payment not successful. Status: ${paymentIntent.status}`,
+        };
+        return res.status(400).json(response);
+      }
+
+      // Log donation to database (optional - can track donations)
+      const donorName = paymentIntent.metadata.donorName || 'Anonymous';
+      const amount = paymentIntent.amount / 100;
+
+      console.log(`💝 Donation received: $${amount} from ${donorName}`);
+
+      // Optional: Store in donations table if you create one
+      // await db.query('INSERT INTO donations (amount, donor_name, donor_email, payment_intent_id) VALUES ($1, $2, $3, $4)',
+      //   [amount, donorName, paymentIntent.metadata.donorEmail, paymentIntentId]);
+
+      const response: ApiResponse = {
+        success: true,
+        data: {
+          status: paymentIntent.status,
+          amount: amount,
+        },
+        message: 'Thank you for your donation!',
+      };
+
+      res.json(response);
+    } catch (error: any) {
+      console.error('Confirm donation error:', error);
+      const response: ApiResponse = {
+        success: false,
+        error: error.message || 'Failed to confirm donation',
+      };
+      res.status(500).json(response);
+    }
+  }
+);
+
 // ============================================
 // CRYPTO PAYMENT VERIFICATION
 // ============================================

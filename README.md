@@ -1,27 +1,99 @@
-# Algorithmic Acid - Full Stack E-Commerce Platform
+# Void Vendor - Cyberpunk VST Plugin Marketplace
 
-A modern, full-stack e-commerce platform built with React, TypeScript, Node.js, and Express. Sells shirts, music, anime, video games, and software.
+A full-stack e-commerce platform for VST plugins with cyberpunk aesthetics. Features free downloads, premium plugins, crypto payments, user profiles, community forum, and advanced DDoS protection.
+
+🌐 **Live Site**: [https://www.voidvendor.com](https://www.voidvendor.com)
 
 ## Tech Stack
 
 ### Frontend
-- **React 18** - UI library
-- **TypeScript** - Type safety
-- **Vite** - Build tool and dev server
-- **Tailwind CSS** - Styling
-- **Zustand** - State management (shopping cart)
-- **Axios** - HTTP client
+- **React 18** with TypeScript
+- **Vite** - Lightning fast build tool
+- **Tailwind CSS** - Cyberpunk theme with cyan/purple/pink gradients
+- **Zustand** - State management with persistence
+- **React Router** - Client-side routing
+- **Recharts** - Analytics visualizations
+- **Stripe Elements** - Secure payment processing
 - **React Hot Toast** - Notifications
 - **Lucide React** - Icons
 
 ### Backend
-- **Node.js** - Runtime
+- **Node.js** with TypeScript
 - **Express** - Web framework
-- **TypeScript** - Type safety
-- **MongoDB** - Database (with in-memory fallback)
-- **JWT** - Authentication
+- **PostgreSQL** - Relational database (pg driver)
+- **JWT** - Authentication & authorization
 - **bcryptjs** - Password hashing
-- **Mongoose** - ODM
+- **Multer** - File uploads (avatars)
+- **Stripe** - Payment processing
+- **PM2** - Process management
+
+### Security & Infrastructure
+- **Nginx** - Reverse proxy & static file serving
+- **Let's Encrypt** - SSL/TLS certificates
+- **VoidTrap** - Custom DDoS protection & honeypot middleware
+- **Rate Limiting** - Request throttling per IP
+- **Cloudflare** (optional) - CDN & additional DDoS protection
+
+## Features
+
+### E-Commerce Core
+- ✅ Product catalog with free & premium VST plugins
+- ✅ Shopping cart with persistent storage
+- ✅ Stripe card payment integration
+- ✅ Cryptocurrency payments (Bitcoin, Monero)
+- ✅ Digital product downloads
+- ✅ Order management & history
+- ✅ Stock inventory tracking
+- ✅ Product reviews & ratings
+
+### User Features
+- ✅ User authentication (JWT-based)
+- ✅ User profiles with avatars
+- ✅ Bio & location customization
+- ✅ Forum/community discussions
+- ✅ Post creation & commenting
+- ✅ Profile linking in forum posts
+- ✅ Download tracking
+
+### Donations
+- ✅ Stripe card donations
+- ✅ Bitcoin (BTC) donations
+- ✅ Monero (XMR) donations
+- ✅ QR code generation
+- ✅ Anonymous donation support
+
+### Admin Panel
+- ✅ Comprehensive dashboard
+- ✅ User management
+- ✅ Order management
+- ✅ Product inventory control
+- ✅ Free download management
+- ✅ **Traffic monitoring (separated user/admin)**
+- ✅ **Security monitoring with VoidTrap**
+- ✅ Blacklist management
+- ✅ Honeypot trap detection
+- ✅ Download/piracy analytics
+- ✅ Revenue tracking
+
+### Security Features
+- ✅ **VoidTrap middleware** - Custom DDoS protection
+- ✅ **Honeypot traps** - Catches scanners & bots
+- ✅ **Rate limiting** - Per-IP request throttling
+- ✅ **Auto-banning** - Suspicious IPs banned for 30min
+- ✅ **Tarpit response** - Delays for banned IPs
+- ✅ **Traffic separation** - Admin traffic logged separately
+- ✅ **SQL injection protection**
+- ✅ **XSS prevention**
+- ✅ **Path traversal detection**
+
+### SEO & Performance
+- ✅ Complete meta tags (Open Graph, Twitter Card)
+- ✅ Structured data (JSON-LD)
+- ✅ Sitemap.xml & robots.txt
+- ✅ Google Search Console verified
+- ✅ CDN-ready headers
+- ✅ Static asset caching
+- ✅ Image optimization
 
 ## Project Structure
 
@@ -30,67 +102,94 @@ Algorithmic_Acid/
 ├── backend/
 │   ├── src/
 │   │   ├── config/
-│   │   │   └── database.ts          # MongoDB connection
-│   │   ├── data/
-│   │   │   └── products.ts          # Product seed data
+│   │   │   └── postgres.ts          # PostgreSQL connection
+│   │   ├── database/
+│   │   │   └── *.sql                # Database migrations
 │   │   ├── middleware/
-│   │   │   └── auth.ts              # JWT authentication
-│   │   ├── models/
-│   │   │   ├── Product.ts           # Product model
-│   │   │   ├── User.ts              # User model
-│   │   │   └── Order.ts             # Order model
+│   │   │   ├── auth.ts              # JWT authentication
+│   │   │   ├── requestLogger.ts     # Traffic logging
+│   │   │   └── voidTrap.ts          # DDoS protection
+│   │   ├── repositories/
+│   │   │   ├── ProductRepository.ts
+│   │   │   ├── UserRepository.ts
+│   │   │   └── OrderRepository.ts
 │   │   ├── routes/
-│   │   │   ├── products.ts          # Product routes
-│   │   │   ├── auth.ts              # Auth routes
-│   │   │   └── orders.ts            # Order routes
-│   │   ├── services/
-│   │   │   └── productService.ts    # Product service layer
+│   │   │   ├── products.ts
+│   │   │   ├── auth.ts
+│   │   │   ├── orders.ts
+│   │   │   ├── payments.ts          # Stripe & crypto
+│   │   │   ├── blog.ts              # Forum
+│   │   │   ├── profile.ts           # User profiles
+│   │   │   ├── downloads.ts
+│   │   │   └── admin.ts             # Admin panel API
 │   │   ├── types/
-│   │   │   └── index.ts             # TypeScript types
+│   │   │   └── index.ts
 │   │   ├── utils/
-│   │   │   └── jwt.ts               # JWT utilities
-│   │   └── server.ts                # Express server
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── .env.example
+│   │   │   └── jwt.ts
+│   │   └── server.ts
+│   └── package.json
 │
 ├── frontend/
+│   ├── public/
+│   │   ├── sitemap.xml
+│   │   └── robots.txt
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── Header.tsx           # Navigation & search
-│   │   │   ├── Hero.tsx             # Hero section
-│   │   │   ├── ProductCard.tsx      # Product display
-│   │   │   ├── CartSidebar.tsx      # Shopping cart
-│   │   │   ├── Checkout.tsx         # Checkout modal
-│   │   │   └── Footer.tsx           # Footer
-│   │   ├── services/
-│   │   │   ├── api.ts               # API client
-│   │   │   └── orderApi.ts          # Order API
+│   │   │   ├── Header.tsx
+│   │   │   ├── ProductCard.tsx
+│   │   │   ├── CartSidebar.tsx
+│   │   │   ├── AuthModal.tsx
+│   │   │   ├── Avatar.tsx
+│   │   │   ├── StripeDonation.tsx
+│   │   │   ├── SEO.tsx
+│   │   │   └── Footer.tsx
+│   │   ├── pages/
+│   │   │   ├── Home.tsx
+│   │   │   ├── ProductDetails.tsx
+│   │   │   ├── Checkout.tsx
+│   │   │   ├── Downloads.tsx
+│   │   │   ├── Forum.tsx
+│   │   │   ├── UserProfile.tsx
+│   │   │   ├── Donate.tsx
+│   │   │   ├── Admin.tsx
+│   │   │   └── About.tsx
 │   │   ├── store/
-│   │   │   ├── cartStore.ts         # Zustand cart store
-│   │   │   └── authStore.ts         # Auth state
-│   │   ├── types/
-│   │   │   ├── index.ts             # TypeScript types
-│   │   │   └── order.ts             # Order types
-│   │   ├── App.tsx                  # Main app component
-│   │   ├── main.tsx                 # Entry point
-│   │   └── index.css                # Global styles
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── vite.config.ts
-│   ├── tailwind.config.js
-│   └── .env.example
+│   │   │   ├── cartStore.ts
+│   │   │   └── authStore.ts
+│   │   ├── App.tsx
+│   │   └── main.tsx
+│   ├── index.html
+│   └── package.json
 │
 └── README.md
 ```
 
-## Getting Started
+## Database Schema (PostgreSQL)
+
+### Core Tables
+- `users` - User accounts (email, password, is_admin, bio, location, avatar_url)
+- `products` - VST plugins (name, price, description, category, stock, product_type)
+- `orders` - Customer orders
+- `order_items` - Order line items
+- `blog_posts` - Forum posts
+- `blog_comments` - Forum comments
+- `product_reviews` - Product reviews
+- `free_downloads` - Free VST downloads
+
+### Traffic & Security
+- `traffic_logs` - User/guest traffic (excludes admin)
+- `admin_traffic_logs` - Admin traffic (separate monitoring)
+- `crypto_payments` - BTC/XMR payment tracking
+
+## Installation & Setup
 
 ### Prerequisites
-- Node.js 18+ installed
-- npm or yarn package manager
+- Node.js 18+
+- PostgreSQL 14+
+- PM2 (production)
+- Nginx (production)
 
-### Installation
+### Local Development
 
 1. **Clone the repository**
    ```bash
@@ -98,234 +197,177 @@ Algorithmic_Acid/
    cd Recursive-Dreams
    ```
 
-2. **Install Backend Dependencies**
+2. **Setup PostgreSQL Database**
+   ```bash
+   createdb algorithmic_acid
+   psql algorithmic_acid < backend/src/database/schema.sql
+   ```
+
+3. **Backend Setup**
    ```bash
    cd backend
    npm install
+   cp .env.example .env
+   # Edit .env with your database credentials
+   npm run dev
    ```
 
-3. **Install Frontend Dependencies**
+4. **Frontend Setup**
    ```bash
-   cd ../frontend
+   cd frontend
    npm install
-   ```
-
-4. **Configure Environment Variables**
-
-   Backend (backend/.env):
-   ```bash
    cp .env.example .env
+   # Set VITE_API_URL to http://localhost:5001
+   npm run dev
    ```
-   Edit `.env` with your settings (defaults work for development)
 
-   Frontend (frontend/.env):
+### Environment Variables
+
+**Backend (.env)**
+```env
+PORT=5001
+DATABASE_URL=postgresql://user:password@localhost:5432/algorithmic_acid
+JWT_SECRET=your_jwt_secret_key
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+UPLOADS_DIR=/path/to/uploads
+DOWNLOADS_DIR=/path/to/downloads
+```
+
+**Frontend (.env)**
+```env
+VITE_API_URL=http://localhost:5001
+```
+
+## Deployment (Raspberry Pi / Linux)
+
+The included `deploy.ps1` script automates deployment:
+
+```powershell
+# Deploy frontend only
+.\deploy.ps1 frontend
+
+# Deploy backend only
+.\deploy.ps1 backend
+
+# Deploy everything
+.\deploy.ps1 all
+```
+
+### Manual Deployment Steps
+
+1. **Backend**
    ```bash
-   cp .env.example .env
+   cd /home/wes/voidvendor/backend
+   npm install
+   npm run build
+   pm2 restart api
    ```
 
-### Running the Application
-
-You'll need two terminal windows:
-
-**Terminal 1 - Backend Server:**
-```bash
-cd backend
-npm run dev
-```
-Server runs on [http://localhost:5000](http://localhost:5000)
-
-**Terminal 2 - Frontend Dev Server:**
-```bash
-cd frontend
-npm run dev
-```
-Frontend runs on [http://localhost:5173](http://localhost:5173)
-
-### Building for Production
-
-**Backend:**
-```bash
-cd backend
-npm run build
-npm start
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm run build
-npm run preview
-```
-
-## Features
-
-### Implemented
-- ✅ Product catalog with categories (Shirts, Music, Anime, Games, Software)
-- ✅ Search functionality
-- ✅ Category filtering
-- ✅ Shopping cart with persistent storage
-- ✅ User authentication (JWT)
-- ✅ Order management system
-- ✅ Stock management
-- ✅ Checkout flow
-- ✅ Order history
-- ✅ Order cancellation
-- ✅ Admin role system
-- ✅ Real-time total calculation
-- ✅ Responsive design (mobile, tablet, desktop)
-- ✅ Toast notifications
-- ✅ Modern UI with animations
-- ✅ Type-safe with TypeScript
-- ✅ RESTful API
-
-### Coming Soon
-- 🔲 Login/Register UI components
-- 🔲 Payment processing (Stripe)
-- 🔲 Order tracking page
-- 🔲 User profile page
-- 🔲 Product reviews
-- 🔲 Admin dashboard
-- 🔲 Image uploads
-- 🔲 Email notifications
+2. **Frontend**
+   ```bash
+   cd /home/wes/voidvendor/frontend
+   npm install
+   npm run build
+   sudo cp -r dist/* /home/wes/voidvendor-frontend/
+   sudo systemctl reload nginx
+   ```
 
 ## API Endpoints
 
 ### Products
-- `GET /api/products` - Get all products
-- `GET /api/products?category=shirts` - Get products by category
-- `GET /api/products?search=query` - Search products
-- `GET /api/products/:id` - Get single product
+- `GET /api/products` - List all products
+- `GET /api/products/:id` - Get product details
+- `POST /api/products` - Create product (admin)
+- `PUT /api/products/:id` - Update product (admin)
 
 ### Authentication
-- `POST /api/auth/register` - Register new user
+- `POST /api/auth/register` - Register user
 - `POST /api/auth/login` - Login user
-- `GET /api/auth/me` - Get current user (protected)
+- `GET /api/auth/me` - Get current user
 
-### Orders
-- `POST /api/orders` - Create order (protected)
-- `GET /api/orders/my-orders` - Get user's orders (protected)
-- `GET /api/orders/:id` - Get single order (protected)
-- `PATCH /api/orders/:id/cancel` - Cancel order (protected)
-- `GET /api/orders` - Get all orders (admin only)
-- `PATCH /api/orders/:id/status` - Update order status (admin only)
+### Payments
+- `POST /api/payments/create-intent` - Create Stripe payment
+- `POST /api/payments/confirm` - Confirm payment
+- `POST /api/payments/donate` - Create donation payment
+- `POST /api/payments/crypto/create` - Create crypto payment
+- `POST /api/payments/crypto/submit-tx` - Submit transaction hash
 
-### Health
-- `GET /api/health` - API health check
+### Profile
+- `GET /api/profile/:userId` - Get user profile
+- `PUT /api/profile` - Update own profile
+- `POST /api/profile/avatar` - Upload avatar
 
-## Development
+### Forum
+- `GET /api/blog/posts` - Get forum posts
+- `POST /api/blog/posts` - Create post
+- `POST /api/blog/posts/:id/comments` - Add comment
 
-### Backend Scripts
-```bash
-npm run dev      # Development with hot reload
-npm run build    # Compile TypeScript
-npm start        # Run compiled code
-npm run lint     # Lint code
-npm run seed     # Seed database
-```
+### Admin
+- `GET /api/admin/stats` - Dashboard statistics
+- `GET /api/admin/traffic/stats` - Traffic statistics
+- `GET /api/admin/traffic/logs` - User traffic logs
+- `GET /api/admin/traffic/admin` - Admin traffic logs
+- `GET /api/admin/security/blacklist` - Banned IPs
+- `POST /api/admin/security/ban` - Ban IP address
+- `GET /api/admin/security/trapped` - Honeypot hits
 
-### Frontend Scripts
-```bash
-npm run dev      # Development server
-npm run build    # Production build
-npm run preview  # Preview production build
-npm run lint     # Lint code
-```
+## Security Best Practices
 
-## Customization
+### VoidTrap Middleware
+Automatically protects against:
+- WordPress/PHP scanner bots
+- SQL injection attempts
+- Path traversal attacks
+- XSS attempts
+- Rate limit violations
+- Oversized payloads
 
-### Adding Products
-Edit [backend/src/data/products.ts](backend/src/data/products.ts)
+### Traffic Separation
+- Admin traffic → `admin_traffic_logs` table
+- User traffic → `traffic_logs` table
+- In-memory logs exclude admin traffic
+- Clean security monitoring without admin noise
 
-```typescript
-{
-  name: "Your Product",
-  category: "shirts", // shirts | music | anime | games | software
-  price: 29.99,
-  description: "Product description",
-  icon: "🎨",
-  stock: 100
-}
-```
+## SEO Configuration
 
-### Changing Colors
-Edit [frontend/tailwind.config.js](frontend/tailwind.config.js)
+### Google Search Console
+1. Visit https://search.google.com/search-console
+2. Add property: `www.voidvendor.com`
+3. Submit sitemap: `https://www.voidvendor.com/sitemap.xml`
 
-```javascript
-colors: {
-  primary: {
-    DEFAULT: '#6C63FF',  // Your primary color
-  },
-  secondary: {
-    DEFAULT: '#FF6584',  // Your secondary color
-  },
-}
-```
+### Structured Data
+- Organization schema
+- WebSite schema with SearchAction
+- SoftwareApplication schema for each product
+- Product reviews with aggregate ratings
 
-## Documentation
+## CDN Setup (Cloudflare)
 
-- [START_HERE.md](START_HERE.md) - Quick launch guide
-- [QUICKSTART.md](QUICKSTART.md) - Detailed setup instructions
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture
-- [MONGODB_SETUP.md](MONGODB_SETUP.md) - MongoDB setup guide
-- [PHASE_3_COMPLETE.md](PHASE_3_COMPLETE.md) - Order system documentation
-- [PRODUCTION_ROADMAP.md](PRODUCTION_ROADMAP.md) - Feature roadmap
+1. Sign up at https://dash.cloudflare.com
+2. Add site: `voidvendor.com`
+3. Update nameservers at domain registrar
+4. Configure SSL/TLS: **Full (strict)**
+5. Enable optimizations:
+   - Auto Minify (JS, CSS, HTML)
+   - Brotli compression
+   - Rocket Loader
+6. Create page rules for static asset caching
 
-## Technologies Explained
+## Contributing
 
-### Why Zustand?
-- Lightweight (< 1KB)
-- Simple API
-- Built-in persistence
-- No boilerplate
-- TypeScript support
-
-### Why Vite?
-- Extremely fast HMR
-- Optimized builds
-- Native ES modules
-- Better DX than CRA
-
-### Why Tailwind?
-- Utility-first approach
-- Responsive design
-- Consistent styling
-- No CSS naming conflicts
-
-## Deployment
-
-### Backend (Railway/Render/Heroku)
-1. Push code to GitHub
-2. Connect repository
-3. Set environment variables
-4. Deploy
-
-### Frontend (Vercel/Netlify)
-1. Push code to GitHub
-2. Connect repository
-3. Set build command: `npm run build`
-4. Set output directory: `dist`
-5. Set environment variables
-6. Deploy
-
-## Troubleshooting
-
-### CORS Issues
-Make sure `FRONTEND_URL` in backend `.env` matches your frontend URL
-
-### Port Already in Use
-Change port in backend `.env` or frontend `vite.config.ts`
-
-### API Connection Failed
-- Ensure backend is running
-- Check `VITE_API_URL` in frontend `.env`
-- Verify network/firewall settings
+Pull requests are welcome! For major changes, please open an issue first.
 
 ## License
+
 MIT
 
-## Support
-For issues or questions, please open an issue on GitHub.
+## Credits
+
+Built with 💜 by **Algorithmic Acid**
+
+**Powered by**: React • TypeScript • PostgreSQL • Stripe • Express • Tailwind CSS
 
 ---
 
-**Built with ❤️ using React, TypeScript, and Node.js**
+*Void Vendor - Professional VST plugins for the digital void*

@@ -166,31 +166,61 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
       userId: (req as any).user?.userId,
     };
 
-    // Add to circular buffer
-    if (requestLogs.length >= MAX_LOGS) {
-      requestLogs.shift(); // Remove oldest
+    // Add to circular buffer (exclude admin traffic to keep monitoring clean)
+    const user = (req as any).user;
+    const isAdmin = user && user.role === 'admin';
+
+    if (!isAdmin) {
+      if (requestLogs.length >= MAX_LOGS) {
+        requestLogs.shift(); // Remove oldest
+      }
+      requestLogs.push(log);
     }
-    requestLogs.push(log);
 
     // Persist to database (async, don't block the response)
+    // Separate admin traffic from regular user/guest traffic
     setImmediate(() => {
-      db.query(
-        `INSERT INTO traffic_logs (timestamp, method, path, status_code, response_time, ip_address, user_agent, user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          new Date(log.timestamp),
-          log.method,
-          log.path,
-          log.statusCode,
-          log.responseTime,
-          log.ip,
-          log.userAgent,
-          log.userId || null
-        ]
-      ).catch(err => {
-        // Log error but don't fail the request
-        console.error('Traffic log DB insert failed:', err.message);
-      });
+      const user = (req as any).user;
+      const isAdmin = user && user.role === 'admin';
+
+      if (isAdmin) {
+        // Log admin traffic to separate table
+        db.query(
+          `INSERT INTO admin_traffic_logs (timestamp, method, path, status_code, response_time, ip_address, user_agent, user_id, admin_email)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            new Date(log.timestamp),
+            log.method,
+            log.path,
+            log.statusCode,
+            log.responseTime,
+            log.ip,
+            log.userAgent,
+            log.userId || null,
+            user.email || null
+          ]
+        ).catch(err => {
+          console.error('Admin traffic log DB insert failed:', err.message);
+        });
+      } else {
+        // Log regular user/guest traffic
+        db.query(
+          `INSERT INTO traffic_logs (timestamp, method, path, status_code, response_time, ip_address, user_agent, user_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            new Date(log.timestamp),
+            log.method,
+            log.path,
+            log.statusCode,
+            log.responseTime,
+            log.ip,
+            log.userAgent,
+            log.userId || null
+          ]
+        ).catch(err => {
+          console.error('Traffic log DB insert failed:', err.message);
+        });
+      }
     });
 
     return originalEnd.call(this, chunk, encoding, callback);

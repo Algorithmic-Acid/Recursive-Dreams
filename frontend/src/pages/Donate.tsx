@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Copy, Check, QrCode, Zap, Heart } from 'lucide-react';
 import { Footer } from '../components/Footer';
+import { StripeDonation } from '../components/StripeDonation';
 import toast from 'react-hot-toast';
 
 // Wallet Addresses
@@ -69,12 +70,15 @@ export const Donate = () => {
           </div>
           <p className="text-white/60 text-lg max-w-2xl mx-auto">
             Your donations help us create more free VST plugins and keep the void alive.
-            We accept Bitcoin and Monero.
+            We accept card payments, Bitcoin, and Monero.
           </p>
         </div>
 
-        {/* Crypto Donation Cards */}
-        <div className="grid md:grid-cols-2 gap-6 md:gap-8 max-w-5xl mx-auto">
+        {/* Donation Options */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto">
+
+          {/* Stripe Card Payment */}
+          <StripeDonation />
 
           {/* Bitcoin Section */}
           <div className="bg-gradient-to-br from-amber-900/30 to-amber-800/20 border border-amber-500/30 rounded-2xl p-6 md:p-8 hover:border-amber-500/50 transition-all">
