@@ -7,7 +7,7 @@ import cors from 'cors';
 import path from 'path';
 import { db } from './config/postgres';
 import { requestLogger, startTrafficLogCleanup } from './middleware/requestLogger';
-import { voidTrap } from './middleware/voidTrap';
+import { voidTrap, loadPersistedBans } from './middleware/voidTrap';
 import productRoutes from './routes/products';
 import authRoutes from './routes/auth';
 import orderRoutes from './routes/orders';
@@ -182,6 +182,9 @@ const initializeApp = async () => {
     } catch (err) {
       console.log('Free downloads table check:', err);
     }
+
+    // Load persisted IP bans from DB into memory (survive restarts)
+    await loadPersistedBans();
 
     // Start automatic traffic log cleanup (deletes logs older than 3 months)
     startTrafficLogCleanup();
