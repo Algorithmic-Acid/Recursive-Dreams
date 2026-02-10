@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../config/postgres';
+import { verifyToken } from '../utils/jwt';
 
 // Cleanup old traffic logs (older than 3 months)
 export const cleanupOldTrafficLogs = async (): Promise<number> => {
@@ -166,10 +167,29 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
       userId: (req as any).user?.userId,
     };
 
-    // Add to circular buffer (exclude admin traffic to keep monitoring clean)
-    const user = (req as any).user;
-    const isAdmin = user && user.role === 'admin';
+    // Detect admin from JWT directly so it works on ALL routes,
+    // including public endpoints and the login request itself
+    const detectAdmin = (): { isAdmin: boolean; email: string | null; userId: string | null } => {
+      // First check if protect middleware already decoded the user
+      const protectedUser = (req as any).user;
+      if (protectedUser?.role === 'admin') {
+        return { isAdmin: true, email: protectedUser.email, userId: protectedUser.userId };
+      }
+      // Fall back to decoding the token from the Authorization header directly
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        const decoded = verifyToken(token);
+        if (decoded?.role === 'admin') {
+          return { isAdmin: true, email: decoded.email, userId: decoded.userId };
+        }
+      }
+      return { isAdmin: false, email: null, userId: null };
+    };
 
+    const { isAdmin, email: adminEmail, userId: adminUserId } = detectAdmin();
+
+    // Add to circular buffer (exclude admin traffic to keep monitoring clean)
     if (!isAdmin) {
       if (requestLogs.length >= MAX_LOGS) {
         requestLogs.shift(); // Remove oldest
@@ -180,8 +200,6 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
     // Persist to database (async, don't block the response)
     // Separate admin traffic from regular user/guest traffic
     setImmediate(() => {
-      const user = (req as any).user;
-      const isAdmin = user && user.role === 'admin';
 
       if (isAdmin) {
         // Log admin traffic to separate table
@@ -196,8 +214,8 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
             log.responseTime,
             log.ip,
             log.userAgent,
-            log.userId || null,
-            user.email || null
+            adminUserId || log.userId || null,
+            adminEmail || null
           ]
         ).catch(err => {
           console.error('Admin traffic log DB insert failed:', err.message);

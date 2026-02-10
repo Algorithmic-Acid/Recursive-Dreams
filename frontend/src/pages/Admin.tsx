@@ -1629,31 +1629,40 @@ export const Admin = () => {
             </div>
 
             {/* Recent Request Logs Table */}
-            <div className="bg-dark-card border border-cyan-500/20 rounded-lg p-3 sm:p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 sm:mb-4 gap-2">
-                <h3 className="text-sm sm:text-lg font-bold text-cyan-400 font-mono">RECENT_LOGS</h3>
-                <div className="flex gap-2">
+            <div className={`bg-dark-card border rounded-lg p-3 sm:p-6 ${trafficType === 'admin' ? 'border-purple-500/30' : 'border-cyan-500/20'}`}>
+              {/* Header row with toggle */}
+              <div className="flex items-center justify-between mb-3 sm:mb-4 gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <h3 className={`text-sm sm:text-lg font-bold font-mono ${trafficType === 'admin' ? 'text-purple-400' : 'text-cyan-400'}`}>
+                    {trafficType === 'admin' ? 'ADMIN_LOGS' : 'USER_LOGS'}
+                  </h3>
+                  {trafficType === 'admin' && (
+                    <span className="px-1.5 py-0.5 bg-purple-500/20 border border-purple-500/40 rounded text-[9px] font-mono text-purple-300">ADMIN</span>
+                  )}
+                </div>
+                {/* Toggle buttons — always visible */}
+                <div className="flex rounded-lg overflow-hidden border border-cyan-500/20">
                   <button
                     type="button"
                     onClick={() => setTrafficType('user')}
-                    className={`px-2 sm:px-3 py-1 rounded font-mono text-[10px] sm:text-xs ${
+                    className={`px-2 sm:px-3 py-1.5 font-mono text-[9px] sm:text-xs transition-colors ${
                       trafficType === 'user'
                         ? 'bg-cyan-500 text-white'
-                        : 'bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20'
+                        : 'bg-transparent text-cyan-400 hover:bg-cyan-500/20'
                     }`}
                   >
-                    USER_TRAFFIC
+                    USERS
                   </button>
                   <button
                     type="button"
                     onClick={() => setTrafficType('admin')}
-                    className={`px-2 sm:px-3 py-1 rounded font-mono text-[10px] sm:text-xs ${
+                    className={`px-2 sm:px-3 py-1.5 font-mono text-[9px] sm:text-xs transition-colors border-l border-cyan-500/20 ${
                       trafficType === 'admin'
                         ? 'bg-purple-500 text-white'
-                        : 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20'
+                        : 'bg-transparent text-purple-400 hover:bg-purple-500/20'
                     }`}
                   >
-                    ADMIN_TRAFFIC
+                    ADMIN
                   </button>
                 </div>
               </div>

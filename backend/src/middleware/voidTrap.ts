@@ -14,6 +14,27 @@ const TRAP_PATHS = [
   '/etc/passwd', '/etc/shadow',
   '/actuator', '/solr', '/struts',
   '/vendor/phpunit', '/telescope/requests',
+  // Session/analytics scanners
+  '/api/session/properties',
+  // SonicWall firewall scanners
+  '/api/sonicos/tfa', '/api/sonicos/auth', '/api/sonicos',
+  // Kubernetes/container scanners
+  '/api/v1/pods', '/api/v1/nodes', '/api/v1/secrets',
+  '/api/v1/namespaces', '/api/v1/services',
+  // General API version scanners
+  '/v1/pods', '/v2/pods',
+  // Jenkins/CI scanners
+  '/jenkins', '/jnlpJars', '/script',
+  // Spring Boot actuators
+  '/actuator/health', '/actuator/env', '/actuator/beans',
+  // Config/secrets scanners
+  '/config', '/configs', '/configuration',
+  '/secret', '/secrets', '/credentials',
+  '/backup', '/db', '/database',
+  // Common exploit paths
+  '/console', '/debug', '/trace',
+  '/swagger', '/swagger-ui', '/api-docs',
+  '/graphql', '/playground',
 ];
 
 // Suspicious path patterns (regex)
