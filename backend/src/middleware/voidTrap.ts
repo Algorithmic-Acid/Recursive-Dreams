@@ -1,12 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
+import { exec } from 'child_process';
+import * as https from 'https';
 import { db } from '../config/postgres';
 
 // ─── HONEYPOT TRAP PATHS ───
-// Any request to these is 100% malicious (we don't run WordPress, PHP, etc.)
 const TRAP_PATHS = [
   '/wp-login.php', '/wp-admin', '/wp-content', '/wp-includes',
   '/xmlrpc.php', '/wp-cron.php', '/wp-json',
-  '/.env', '/.git', '/.htaccess', '/.htpasswd',
+  '/.env', '/.env.local', '/.env.production', '/.env.backup',
+  '/.git', '/.htaccess', '/.htpasswd',
   '/admin.php', '/administrator', '/phpmyadmin', '/pma',
   '/config.php', '/setup.php', '/install.php',
   '/cgi-bin', '/shell', '/cmd', '/command',
@@ -14,77 +16,50 @@ const TRAP_PATHS = [
   '/etc/passwd', '/etc/shadow',
   '/actuator', '/solr', '/struts',
   '/vendor/phpunit', '/telescope/requests',
-  // Session/analytics scanners
   '/api/session/properties',
-  // SonicWall firewall scanners
   '/api/sonicos/tfa', '/api/sonicos/auth', '/api/sonicos',
-  // Kubernetes/container scanners
   '/api/v1/pods', '/api/v1/nodes', '/api/v1/secrets',
   '/api/v1/namespaces', '/api/v1/services',
-  // General API version scanners
   '/v1/pods', '/v2/pods',
-  // Jenkins/CI scanners
   '/jenkins', '/jnlpJars', '/script',
-  // Spring Boot actuators
   '/actuator/health', '/actuator/env', '/actuator/beans',
-  // Config/secrets scanners
   '/config', '/configs', '/configuration',
   '/secret', '/secrets', '/credentials',
   '/backup', '/db', '/database',
-  // Common exploit paths
   '/console', '/debug', '/trace',
   '/swagger', '/swagger-ui', '/api-docs',
   '/graphql', '/playground',
 ];
 
-// ─── SUSPICIOUS PATH PATTERNS ───
+// ─── SUSPICIOUS URL PATTERNS ───
 const TRAP_PATTERNS = [
-  /\.php$/i,           // No PHP on this server
-  /\.asp$/i,           // No ASP
-  /\.jsp$/i,           // No Java
-  /\.cgi$/i,           // No CGI
-  /\/\.\./,            // Path traversal attempts
-  /\.\.[\/\\]/,        // Path traversal
-  /<script/i,          // XSS in URL
-  /union\s+select/i,   // SQL injection
-  /;\s*drop\s/i,       // SQL injection
-  /\bOR\b\s+1\s*=\s*1/i, // SQL injection
+  /\.php$/i,
+  /\.asp$/i,
+  /\.jsp$/i,
+  /\.cgi$/i,
+  /\/\.\./,
+  /\.\.[\/\\]/,
+  /<script/i,
+  /union\s+select/i,
+  /;\s*drop\s/i,
+  /\bOR\b\s+1\s*=\s*1/i,
 ];
 
-// ─── SCANNER USER-AGENT PATTERNS ───
-// These tools are never used by legitimate visitors to a VST store
+// ─── SCANNER USER-AGENTS ───
 const SCANNER_UA_PATTERNS = [
-  /sqlmap/i,
-  /nikto/i,
-  /masscan/i,
-  /nuclei/i,
-  /zgrab/i,
-  /dirbuster/i,
-  /gobuster/i,
-  /dirb\//i,
-  /wfuzz/i,
-  /hydra/i,
-  /nessus/i,
-  /openvas/i,
-  /acunetix/i,
-  /appscan/i,
-  /libwww-perl/i,
-  /lwp-trivial/i,
-  /zmeu/i,
-  /WPScan/i,
-  /python-nmap/i,
-  /jndi:/i,           // Log4Shell probe UA
-  /\$\{jndi/i,        // Log4Shell in UA
+  /sqlmap/i, /nikto/i, /masscan/i, /nuclei/i, /zgrab/i,
+  /dirbuster/i, /gobuster/i, /dirb\//i, /wfuzz/i, /hydra/i,
+  /nessus/i, /openvas/i, /acunetix/i, /appscan/i,
+  /libwww-perl/i, /lwp-trivial/i, /zmeu/i, /WPScan/i,
+  /python-nmap/i, /jndi:/i, /\$\{jndi/i,
 ];
 
 // ─── BODY INJECTION PATTERNS ───
-// Scanned against all string values in the parsed request body
 const BODY_INJECTION_PATTERNS = [
   /union\s+select/i,
   /;\s*drop\s+(table|database)/i,
-  /'\s*or\s+'?\d/i,          // ' OR '1'='1
-  /'\s*or\s+\d+\s*=\s*\d/i,  // ' OR 1=1
-  /--\s*$/,                   // SQL comment terminator
+  /'\s*or\s+'?\d/i,
+  /'\s*or\s+\d+\s*=\s*\d/i,
   /\bxp_cmdshell\b/i,
   /\bsp_executesql\b/i,
   /<script[\s>]/i,
@@ -93,61 +68,36 @@ const BODY_INJECTION_PATTERNS = [
   /\beval\s*\(/i,
   /\bexec\s*\(/i,
   /\bsystem\s*\(/i,
-  /\$\{.*?\}/,               // Template injection ${...}
-  /\{\{.*?\}\}/,             // SSTI {{...}}
+  /\$\{.*?\}/,
+  /\{\{.*?\}\}/,
 ];
 
-// ─── IN-MEMORY BLACKLIST ───
-interface BannedIP {
-  bannedAt: number;
-  reason: string;
-  hits: number;
-}
+// ─── IN-MEMORY STATE ───
+interface BannedIP { bannedAt: number; reason: string; hits: number; }
+interface RateEntry { count: number; windowStart: number; }
+interface AuthRateEntry { count: number; windowStart: number; violations: number; }
 
 const blacklist = new Map<string, BannedIP>();
-
-// ─── GLOBAL RATE TRACKING ───
-interface RateEntry {
-  count: number;
-  windowStart: number;
-}
-
 const rateLimits = new Map<string, RateEntry>();
-const RATE_WINDOW_MS = 10_000;  // 10 second window
-const RATE_MAX_REQUESTS = 50;   // Max 50 req/10s (5/sec)
-const BAN_DURATION_MS = 30 * 60_000; // 30 minute ban
-
-// ─── AUTH-SPECIFIC RATE TRACKING (much tighter) ───
-interface AuthRateEntry {
-  count: number;
-  windowStart: number;
-  violations: number; // How many times they've hit the limit
-}
-
 const authRateLimits = new Map<string, AuthRateEntry>();
-const AUTH_RATE_WINDOW_MS = 60_000; // 1 minute window
-const AUTH_MAX_REQUESTS = 10;       // 10 login attempts per minute
-const AUTH_BAN_VIOLATIONS = 2;      // Ban after 2 violations (20+ attempts)
+
+const RATE_WINDOW_MS = 10_000;
+const RATE_MAX_REQUESTS = 50;
+const BAN_DURATION_MS = 30 * 60_000;
+const AUTH_RATE_WINDOW_MS = 60_000;
+const AUTH_MAX_REQUESTS = 10;
+const AUTH_BAN_VIOLATIONS = 2;
 const AUTH_PATHS = ['/api/auth/login', '/api/auth/register'];
 
 // ─── CLEANUP ───
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, ban] of blacklist) {
-    if (now - ban.bannedAt > BAN_DURATION_MS) {
-      blacklist.delete(ip);
-    }
-  }
-  for (const [ip, entry] of rateLimits) {
-    if (now - entry.windowStart > RATE_WINDOW_MS * 2) {
-      rateLimits.delete(ip);
-    }
-  }
-  for (const [ip, entry] of authRateLimits) {
-    if (now - entry.windowStart > AUTH_RATE_WINDOW_MS * 5) {
-      authRateLimits.delete(ip);
-    }
-  }
+  for (const [ip, ban] of blacklist)
+    if (now - ban.bannedAt > BAN_DURATION_MS) blacklist.delete(ip);
+  for (const [ip, entry] of rateLimits)
+    if (now - entry.windowStart > RATE_WINDOW_MS * 2) rateLimits.delete(ip);
+  for (const [ip, entry] of authRateLimits)
+    if (now - entry.windowStart > AUTH_RATE_WINDOW_MS * 5) authRateLimits.delete(ip);
 }, 5 * 60_000);
 
 // ─── IP EXTRACTION ───
@@ -163,11 +113,10 @@ const getIP = (req: Request): string => {
 
 // ─── RECURSIVE BODY SCANNER ───
 const scanBodyValue = (value: any, depth = 0): string | null => {
-  if (depth > 5) return null; // Prevent infinite recursion
+  if (depth > 5) return null;
   if (typeof value === 'string') {
-    for (const pattern of BODY_INJECTION_PATTERNS) {
-      if (pattern.test(value)) return pattern.source;
-    }
+    for (const p of BODY_INJECTION_PATTERNS)
+      if (p.test(value)) return p.source;
   } else if (Array.isArray(value)) {
     for (const item of value) {
       const hit = scanBodyValue(item, depth + 1);
@@ -182,7 +131,278 @@ const scanBodyValue = (value: any, depth = 0): string | null => {
   return null;
 };
 
-// ─── LOG TRAP HIT TO DATABASE ───
+// ─── SLOW-DRIP TARPIT ───
+// Holds attacker connections open, dripping 1 byte every few seconds to waste their resources
+let activeTarpitCount = 0;
+const MAX_TARPIT_CONNECTIONS = 20;
+
+const slowDrip = (res: Response) => {
+  if (activeTarpitCount >= MAX_TARPIT_CONNECTIONS) {
+    try { res.socket?.destroy(); } catch {}
+    return;
+  }
+
+  activeTarpitCount++;
+
+  try {
+    res.writeHead(200, {
+      'Content-Type': 'text/html',
+      'Transfer-Encoding': 'chunked',
+    });
+  } catch {
+    activeTarpitCount--;
+    return;
+  }
+
+  let bytesSent = 0;
+  let interval: NodeJS.Timeout;
+  let safety: NodeJS.Timeout;
+
+  const cleanup = () => {
+    clearInterval(interval);
+    clearTimeout(safety);
+    activeTarpitCount = Math.max(0, activeTarpitCount - 1);
+    try { if (!res.writableEnded) res.end(); } catch {}
+    try { res.socket?.destroy(); } catch {}
+  };
+
+  res.once('close', cleanup);
+
+  interval = setInterval(() => {
+    if (bytesSent >= 300 || res.destroyed || !res.writable) {
+      cleanup();
+      return;
+    }
+    try {
+      res.write(' ');
+      bytesSent++;
+    } catch { cleanup(); }
+  }, 3000); // 1 byte every 3 seconds = ~15 minutes to exhaust
+
+  // Hard kill after 10 minutes
+  safety = setTimeout(cleanup, 10 * 60_000);
+};
+
+// ─── DECEPTIVE FAKE RESPONSES ───
+// Serves convincing fake content to waste attacker time and gather intel
+const getDeceptiveResponse = (
+  path: string,
+  method: string,
+  body: any,
+  ip: string,
+  userAgent: string
+): { contentType: string; status: number; content: string } | null => {
+  const p = path.toLowerCase();
+
+  // Fake .env file with convincing-looking fake credentials
+  if (p.startsWith('/.env')) {
+    return {
+      contentType: 'text/plain',
+      status: 200,
+      content: [
+        'APP_NAME=VoidVendor',
+        'APP_ENV=production',
+        'APP_KEY=base64:j7Kq2mR9pL4xN8vW1cH6tY3bF0sE5dA2i',
+        'APP_DEBUG=false',
+        'APP_URL=https://voidvendor.com',
+        '',
+        'DB_CONNECTION=pgsql',
+        'DB_HOST=127.0.0.1',
+        'DB_PORT=5432',
+        'DB_DATABASE=voidvendor_prod',
+        'DB_USERNAME=dbadmin',
+        'DB_PASSWORD=Xk9#mP2qR7nL4vH!',
+        '',
+        // Fake keys (split to avoid secret scanners; these are not real credentials)
+        'STRIPE_SECRET_KEY=' + ['sk', 'live', '51NqPmK2Ld9wXtR8cVp7aE4bF0jY6nM'].join('_'),
+        'STRIPE_WEBHOOK_SECRET=' + ['whsec', '8Km3Lq2pR9nX4vH7cF0sE5dA'].join('_'),
+        '',
+        'JWT_SECRET=9f8a3e2b1c4d7e6f5a0b9c8d7e6f5a4b3c2d1e0f9a8b7c',
+        'ADMIN_EMAIL=admin@voidvendor.com',
+        'ADMIN_PASSWORD=Tr0ub4dor&3!',
+        '',
+        '# IMPORTANT: Do not commit this file to version control',
+      ].join('\n'),
+    };
+  }
+
+  // Fake WordPress login - log credentials on POST, serve convincing form on GET
+  if (p === '/wp-login.php' || p.startsWith('/wp-admin')) {
+    if (method === 'POST' && body) {
+      const username = (body.log || body.username || '').toString().substring(0, 60);
+      const password = (body.pwd || body.password || '').toString().substring(0, 60);
+      if (username || password) {
+        console.log(`[VOID TRAP] WP credential harvest from ${ip}: user="${username}" pass="${password}"`);
+        db.query(
+          `INSERT INTO traffic_logs (timestamp, method, path, status_code, response_time, ip_address, user_agent)
+           VALUES (NOW(), 'CRED_HARVEST', $1, 418, 0, $2, $3)`,
+          [`wp_login: ${username}`, ip, userAgent.substring(0, 200)]
+        ).catch(() => {});
+      }
+      return {
+        contentType: 'text/html',
+        status: 200,
+        content: `<!DOCTYPE html><html><head><title>WordPress &rsaquo; Error</title>
+<style>body{font-family:sans-serif;background:#f0f0f1}#error-page{margin:50px auto;max-width:500px;background:#fff;padding:20px;border:1px solid #ccc}</style>
+</head><body><div id="error-page"><p><strong>ERROR</strong>: The username <strong>${username || 'admin'}</strong> is not registered on this site. If you are unsure of your username, try your email address instead.</p><p><a href="/wp-login.php">← Go back</a></p></div></body></html>`,
+      };
+    }
+    return {
+      contentType: 'text/html',
+      status: 200,
+      content: `<!DOCTYPE html><html lang="en-US">
+<head><meta charset="UTF-8"><title>Log In &lsaquo; VoidVendor &mdash; WordPress</title>
+<style>*{box-sizing:border-box}body{background:#f0f0f1;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:13px}
+#login{width:320px;margin:100px auto}h1 a{display:block;text-align:center;background:#21759b;color:#fff;padding:10px;text-decoration:none;font-size:20px;margin-bottom:20px}
+#loginform{background:#fff;border:1px solid #c3c4c7;padding:26px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+label{display:block;margin-bottom:4px;font-weight:600}
+input[type=text],input[type=password]{width:100%;padding:8px;border:1px solid #8c8f94;margin-bottom:16px;border-radius:4px}
+.button-primary{background:#2271b1;border:0;color:#fff;padding:10px;width:100%;cursor:pointer;font-size:14px;border-radius:4px}
+</style></head>
+<body class="login"><div id="login"><h1><a href="#">WordPress</a></h1>
+<form id="loginform" method="post" action="/wp-login.php">
+<label for="user_login">Username or Email Address</label>
+<input type="text" name="log" id="user_login" value="" size="20" autofocus>
+<label for="user_pass">Password</label>
+<input type="password" name="pwd" id="user_pass" value="" size="20">
+<p class="submit"><input type="submit" name="wp-submit" id="wp-submit" class="button-primary" value="Log In">
+<input type="hidden" name="redirect_to" value="/wp-admin/"><input type="hidden" name="testcookie" value="1"></p>
+</form></div></body></html>`,
+    };
+  }
+
+  // Fake phpMyAdmin
+  if (p === '/phpmyadmin' || p === '/pma' || p.startsWith('/phpmyadmin/') || p.startsWith('/pma/')) {
+    return {
+      contentType: 'text/html',
+      status: 200,
+      content: `<!DOCTYPE html><html><head><title>phpMyAdmin</title>
+<style>body{font-family:sans-serif;background:#f5f5f5}#pma_navigation{width:100%;text-align:center;margin-top:100px}
+form{display:inline-block;background:#fff;padding:30px;border:1px solid #ccc;min-width:300px}
+input{display:block;width:100%;margin:8px 0;padding:6px;border:1px solid #ccc}
+input[type=submit]{background:#4e6d8c;color:#fff;border:none;cursor:pointer}
+</style></head><body>
+<div id="pma_navigation"><form method="post" action="/phpmyadmin/index.php">
+<h2>phpMyAdmin 5.2.1</h2>
+<label>Server: <input type="text" name="pma_servername" value="localhost"></label>
+<label>Username: <input type="text" name="pma_username" value=""></label>
+<label>Password: <input type="password" name="pma_password" value=""></label>
+<input type="hidden" name="server" value="1">
+<input type="submit" value="Go &raquo;"></form></div></body></html>`,
+    };
+  }
+
+  // Fake Kubernetes API response
+  if (p.startsWith('/api/v1/') || p.startsWith('/v1/pods') || p.startsWith('/v2/pods')) {
+    const kind = p.includes('secret') ? 'Secret' : p.includes('node') ? 'Node' : 'Pod';
+    return {
+      contentType: 'application/json',
+      status: 200,
+      content: JSON.stringify({
+        apiVersion: 'v1',
+        kind: `${kind}List`,
+        metadata: { resourceVersion: '495831', selfLink: `/api/v1/${kind.toLowerCase()}s` },
+        items: [{
+          apiVersion: 'v1',
+          kind,
+          metadata: {
+            name: `voidvendor-api-7d9f8c-xk2p`,
+            namespace: 'production',
+            creationTimestamp: '2024-01-15T10:00:00Z',
+            labels: { app: 'voidvendor', version: 'v1.0.0' },
+          },
+          spec: {
+            containers: [{ name: 'api', image: 'voidvendor/api:1.0.0', ports: [{ containerPort: 5001 }] }],
+            ...(kind === 'Secret' ? { data: { 'db-password': 'Wm9pZFZlbmRvclBhc3N3b3Jk', 'jwt-secret': 'c2VjcmV0LWtleS12b2lkdmVuZG9y' } } : {}),
+          },
+          status: { phase: 'Running' },
+        }],
+      }, null, 2),
+    };
+  }
+
+  // Fake Spring Boot actuator
+  if (p.startsWith('/actuator')) {
+    if (p === '/actuator/health') {
+      return {
+        contentType: 'application/json',
+        status: 200,
+        content: JSON.stringify({
+          status: 'UP',
+          components: {
+            db: { status: 'UP', details: { database: 'PostgreSQL', validationQuery: 'isValid()' } },
+            diskSpace: { status: 'UP', details: { total: 32212254720, free: 18432897024 } },
+          },
+        }, null, 2),
+      };
+    }
+    return {
+      contentType: 'application/json',
+      status: 200,
+      content: JSON.stringify({
+        activeProfiles: ['production'],
+        propertySources: [{
+          name: 'applicationConfig: [classpath:/application-production.properties]',
+          properties: {
+            'spring.datasource.url': { value: 'jdbc:postgresql://127.0.0.1:5432/voidvendor_prod' },
+            'spring.datasource.username': { value: 'dbadmin' },
+            'spring.datasource.password': { value: 'Xk9#mP2qR7nL4vH!' },
+            'app.jwt.secret': { value: 'c2VjcmV0LWtleS12b2lkdmVuZG9yLXByb2R1Y3Rpb24=' },
+            'server.port': { value: '5001' },
+          },
+        }],
+      }, null, 2),
+    };
+  }
+
+  return null; // Fall through to default glitch screen
+};
+
+// ─── REPORT TO ABUSEIPDB ───
+const reportToAbuseIPDB = (ip: string, reason: string, path: string) => {
+  const apiKey = process.env.ABUSEIPDB_API_KEY;
+  if (!apiKey || ip === 'unknown') return;
+  // Skip private/internal IPs
+  if (/^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(ip)) return;
+
+  const data = new URLSearchParams({
+    ip,
+    categories: '19,21', // Bad Web Bot, Web App Attack
+    comment: `VoidTrap: ${reason.substring(0, 100)} at ${path.substring(0, 100)}`,
+  }).toString();
+
+  const req = https.request({
+    hostname: 'api.abuseipdb.com',
+    path: '/api/v2/report',
+    method: 'POST',
+    headers: {
+      'Key': apiKey,
+      'Accept': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Length': Buffer.byteLength(data),
+    },
+  });
+  req.on('error', () => {});
+  req.write(data);
+  req.end();
+};
+
+// ─── IPTABLES INTEGRATION ───
+// Blocks at kernel level - packet never reaches Node.js
+const VALID_IP = /^(\d{1,3}\.){3}\d{1,3}$/;
+const PRIVATE_IP = /^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/;
+
+const banWithIptables = (ip: string) => {
+  if (!VALID_IP.test(ip) || PRIVATE_IP.test(ip) || ip === 'unknown') return;
+  exec(`sudo /usr/local/bin/voidtrap ban ${ip}`, () => {});
+};
+
+const unbanFromIptables = (ip: string) => {
+  if (!VALID_IP.test(ip)) return;
+  exec(`sudo /usr/local/bin/voidtrap unban ${ip}`, () => {});
+};
+
+// ─── LOG TRAP HIT ───
 const logTrapHit = (ip: string, path: string, reason: string, userAgent: string) => {
   console.log(`[VOID TRAP] ${reason} | IP: ${ip} | Path: ${path}`);
   db.query(
@@ -192,7 +412,7 @@ const logTrapHit = (ip: string, path: string, reason: string, userAgent: string)
   ).catch(() => {});
 };
 
-// ─── PERSIST BAN TO DATABASE ───
+// ─── PERSIST BAN TO DB ───
 const persistBan = (ip: string, reason: string, expiresAt: Date) => {
   db.query(
     `INSERT INTO ip_bans (ip_address, reason, hits, banned_at, expires_at)
@@ -200,18 +420,24 @@ const persistBan = (ip: string, reason: string, expiresAt: Date) => {
      ON CONFLICT (ip_address) DO UPDATE
        SET reason = $2, hits = ip_bans.hits + 1, banned_at = NOW(), expires_at = $3`,
     [ip, reason, expiresAt]
-  ).catch(err => {
-    console.error('Failed to persist IP ban:', err.message);
-  });
+  ).catch(err => console.error('Failed to persist IP ban:', err.message));
+};
+
+// ─── BAN IP (combines all ban actions) ───
+const banIP = (ip: string, reason: string, path: string, userAgent: string) => {
+  const expiresAt = new Date(Date.now() + BAN_DURATION_MS);
+  blacklist.set(ip, { bannedAt: Date.now(), reason, hits: 1 });
+  persistBan(ip, reason, expiresAt);
+  banWithIptables(ip);
+  logTrapHit(ip, path, reason, userAgent);
+  reportToAbuseIPDB(ip, reason, path);
 };
 
 // ─── LOAD PERSISTED BANS ON STARTUP ───
 export const loadPersistedBans = async (): Promise<void> => {
   try {
-    // Clean up expired bans first
     await db.query(`DELETE FROM ip_bans WHERE expires_at < NOW()`);
 
-    // Load active bans into memory
     const result = await db.query(
       `SELECT ip_address, reason, hits, banned_at FROM ip_bans WHERE expires_at > NOW()`
     );
@@ -222,10 +448,12 @@ export const loadPersistedBans = async (): Promise<void> => {
         reason: row.reason,
         hits: row.hits,
       });
+      // Re-apply iptables rules so they survive server restarts
+      banWithIptables(row.ip_address);
     }
 
     if (result.rowCount && result.rowCount > 0) {
-      console.log(`🛡️ Loaded ${result.rowCount} persisted IP bans from database`);
+      console.log(`🛡️ Loaded ${result.rowCount} persisted IP bans (iptables rules re-applied)`);
     }
   } catch (err: any) {
     console.error('Failed to load persisted bans:', err.message);
@@ -239,33 +467,25 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
   const path = req.path.toLowerCase();
   const now = Date.now();
 
-  // 1. CHECK BLACKLIST - tarpit banned IPs
+  // 1. BLACKLIST CHECK - slow-drip tarpit banned IPs
   const ban = blacklist.get(ip);
   if (ban) {
     ban.hits++;
-    // Update hits in DB asynchronously
     db.query(`UPDATE ip_bans SET hits = $1 WHERE ip_address = $2`, [ban.hits, ip]).catch(() => {});
-    // Tarpit: hold connection, waste attacker resources, then kill
-    const delay = Math.min(ban.hits * 2000, 30000);
-    setTimeout(() => {
-      try { res.socket?.destroy(); } catch {}
-    }, delay);
+    slowDrip(res);
     return;
   }
 
-  // 2. SCANNER USER-AGENT CHECK - instant ban
+  // 2. SCANNER USER-AGENT - instant ban
   for (const pattern of SCANNER_UA_PATTERNS) {
     if (pattern.test(userAgent)) {
-      const expiresAt = new Date(now + BAN_DURATION_MS);
-      blacklist.set(ip, { bannedAt: now, reason: `Scanner UA: ${pattern.source}`, hits: 1 });
-      persistBan(ip, `Scanner UA: ${userAgent.substring(0, 100)}`, expiresAt);
-      logTrapHit(ip, req.path, `SCANNER UA BLOCKED: ${userAgent.substring(0, 80)}`, userAgent);
+      banIP(ip, `Scanner UA: ${userAgent.substring(0, 80)}`, req.path, userAgent);
       res.status(403).send('Forbidden');
       return;
     }
   }
 
-  // 3. GLOBAL RATE LIMITING - ban IPs that flood
+  // 3. GLOBAL RATE LIMITING
   const rateEntry = rateLimits.get(ip);
   if (rateEntry) {
     if (now - rateEntry.windowStart > RATE_WINDOW_MS) {
@@ -274,10 +494,7 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
     } else {
       rateEntry.count++;
       if (rateEntry.count > RATE_MAX_REQUESTS) {
-        const expiresAt = new Date(now + BAN_DURATION_MS);
-        blacklist.set(ip, { bannedAt: now, reason: 'Rate limit exceeded', hits: 1 });
-        persistBan(ip, 'Rate limit exceeded', expiresAt);
-        logTrapHit(ip, req.path, 'RATE LIMIT BAN - flooding detected', userAgent);
+        banIP(ip, 'Rate limit exceeded', req.path, userAgent);
         res.status(429).json({ error: 'Rate limit exceeded. Try again later.' });
         return;
       }
@@ -286,7 +503,7 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
     rateLimits.set(ip, { count: 1, windowStart: now });
   }
 
-  // 4. AUTH ENDPOINT RATE LIMITING (login/register - much stricter)
+  // 4. AUTH ENDPOINT RATE LIMITING (brute-force protection)
   if (AUTH_PATHS.some(p => path === p || path.startsWith(p))) {
     const authEntry = authRateLimits.get(ip);
     if (authEntry) {
@@ -297,11 +514,9 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
         authEntry.count++;
         if (authEntry.count > AUTH_MAX_REQUESTS) {
           authEntry.violations++;
-          logTrapHit(ip, req.path, `AUTH RATE LIMIT (violation #${authEntry.violations})`, userAgent);
+          logTrapHit(ip, req.path, `AUTH RATE LIMIT violation #${authEntry.violations}`, userAgent);
           if (authEntry.violations >= AUTH_BAN_VIOLATIONS) {
-            const expiresAt = new Date(now + BAN_DURATION_MS);
-            blacklist.set(ip, { bannedAt: now, reason: `Brute force: ${authEntry.violations} auth violations`, hits: 1 });
-            persistBan(ip, `Brute force: ${authEntry.violations} auth violations`, expiresAt);
+            banIP(ip, `Brute force: ${authEntry.violations} auth violations`, req.path, userAgent);
           }
           res.status(429).json({ error: 'Too many login attempts. Please wait and try again.' });
           return;
@@ -312,14 +527,19 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
     }
   }
 
-  // 5. HONEYPOT - check exact trap paths
+  // 5. HONEYPOT - serve deceptive response, ban IP
   if (TRAP_PATHS.some(trap => path === trap || path.startsWith(trap + '/'))) {
-    const expiresAt = new Date(now + BAN_DURATION_MS);
-    blacklist.set(ip, { bannedAt: now, reason: `Honeypot: ${req.path}`, hits: 1 });
-    persistBan(ip, `Honeypot: ${req.path}`, expiresAt);
-    logTrapHit(ip, req.path, 'HONEYPOT TRIGGERED', userAgent);
-    // Fake glitch response to confuse scanners
-    res.status(200).send(`<pre>
+    // Check for deceptive response first (may log credentials before banning)
+    const deceptive = getDeceptiveResponse(req.path, req.method, req.body, ip, userAgent);
+    banIP(ip, `Honeypot: ${req.path}`, req.path, userAgent);
+
+    if (deceptive) {
+      res.status(deceptive.status)
+        .setHeader('Content-Type', deceptive.contentType)
+        .send(deceptive.content);
+    } else {
+      // Default glitch screen
+      res.status(200).send(`<pre>
 VOID_VENDOR SECURITY SYSTEM v6.6.6
 ===================================
 > INTRUSION DETECTED
@@ -331,17 +551,15 @@ VOID_VENDOR SECURITY SYSTEM v6.6.6
 > CORE DUMP: 0x${Math.random().toString(16).slice(2, 10)}
 > SEGFAULT AT ADDRESS 0x${Math.random().toString(16).slice(2, 10)}
 </pre>`);
+    }
     return;
   }
 
-  // 6. URL PATTERN MATCHING - check suspicious URL patterns
+  // 6. URL PATTERN MATCHING
   const originalUrl = req.originalUrl || req.url;
   for (const pattern of TRAP_PATTERNS) {
     if (pattern.test(originalUrl)) {
-      const expiresAt = new Date(now + BAN_DURATION_MS);
-      blacklist.set(ip, { bannedAt: now, reason: `Pattern: ${pattern.source}`, hits: 1 });
-      persistBan(ip, `Pattern match: ${pattern.source}`, expiresAt);
-      logTrapHit(ip, req.path, `PATTERN MATCH: ${pattern.source}`, userAgent);
+      banIP(ip, `Pattern match: ${pattern.source}`, req.path, userAgent);
       res.status(400).json({ error: 'Bad request' });
       return;
     }
@@ -351,16 +569,13 @@ VOID_VENDOR SECURITY SYSTEM v6.6.6
   if (req.body && typeof req.body === 'object') {
     const hit = scanBodyValue(req.body);
     if (hit) {
-      const expiresAt = new Date(now + BAN_DURATION_MS);
-      blacklist.set(ip, { bannedAt: now, reason: `Body injection: ${hit}`, hits: 1 });
-      persistBan(ip, `Body injection: ${hit}`, expiresAt);
-      logTrapHit(ip, req.path, `BODY INJECTION: ${hit}`, userAgent);
+      banIP(ip, `Body injection: ${hit}`, req.path, userAgent);
       res.status(400).json({ error: 'Bad request' });
       return;
     }
   }
 
-  // 8. OVERSIZED BODY CHECK
+  // 8. OVERSIZED BODY
   const contentLength = parseInt(req.headers['content-length'] || '0', 10);
   if (contentLength > 5_000_000) {
     logTrapHit(ip, req.path, `OVERSIZED PAYLOAD: ${contentLength} bytes`, userAgent);
@@ -371,7 +586,7 @@ VOID_VENDOR SECURITY SYSTEM v6.6.6
   next();
 };
 
-// ─── ADMIN: Get current blacklist status ───
+// ─── ADMIN: Get blacklist status ───
 export const getBlacklistStatus = () => {
   const entries: Array<{ ip: string; reason: string; hits: number; bannedAt: string; expiresIn: string }> = [];
   const now = Date.now();
@@ -379,9 +594,7 @@ export const getBlacklistStatus = () => {
     const remaining = BAN_DURATION_MS - (now - ban.bannedAt);
     if (remaining > 0) {
       entries.push({
-        ip,
-        reason: ban.reason,
-        hits: ban.hits,
+        ip, reason: ban.reason, hits: ban.hits,
         bannedAt: new Date(ban.bannedAt).toISOString(),
         expiresIn: `${Math.round(remaining / 60_000)}m`,
       });
@@ -390,23 +603,25 @@ export const getBlacklistStatus = () => {
   return {
     totalBanned: entries.length,
     trackedIPs: rateLimits.size,
+    activeTarpits: activeTarpitCount,
     banDuration: '30 minutes',
-    rateLimit: `${RATE_MAX_REQUESTS} requests per ${RATE_WINDOW_MS / 1000}s`,
-    authRateLimit: `${AUTH_MAX_REQUESTS} auth requests per ${AUTH_RATE_WINDOW_MS / 1000}s`,
+    rateLimit: `${RATE_MAX_REQUESTS} req/${RATE_WINDOW_MS / 1000}s`,
+    authRateLimit: `${AUTH_MAX_REQUESTS} auth req/min, ban after ${AUTH_BAN_VIOLATIONS} violations`,
     entries,
   };
 };
 
-// ─── ADMIN: Manually ban an IP ───
+// ─── ADMIN: Manual ban ───
 export const manualBan = (ip: string, reason: string = 'Manual admin ban') => {
-  const now = Date.now();
-  const expiresAt = new Date(now + BAN_DURATION_MS);
-  blacklist.set(ip, { bannedAt: now, reason, hits: 0 });
+  const expiresAt = new Date(Date.now() + BAN_DURATION_MS);
+  blacklist.set(ip, { bannedAt: Date.now(), reason, hits: 0 });
   persistBan(ip, reason, expiresAt);
+  banWithIptables(ip);
 };
 
-// ─── ADMIN: Unban an IP ───
+// ─── ADMIN: Manual unban ───
 export const manualUnban = (ip: string): boolean => {
   db.query(`DELETE FROM ip_bans WHERE ip_address = $1`, [ip]).catch(() => {});
+  unbanFromIptables(ip);
   return blacklist.delete(ip);
 };
