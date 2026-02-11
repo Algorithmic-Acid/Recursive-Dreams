@@ -76,14 +76,21 @@ A full-stack e-commerce platform for VST plugins with cyberpunk aesthetics. Feat
 - ✅ Revenue tracking
 
 ### Security Features
-- ✅ **VoidTrap middleware** - Custom DDoS protection
-- ✅ **Honeypot traps** - Catches scanners & bots
-- ✅ **Rate limiting** - Per-IP request throttling
-- ✅ **Auto-banning** - Suspicious IPs banned for 30min
-- ✅ **Tarpit response** - Delays for banned IPs
-- ✅ **Traffic separation** - Admin traffic logged separately
-- ✅ **SQL injection protection**
-- ✅ **XSS prevention**
+- ✅ **VoidTrap middleware** - Multi-layer active defense system
+- ✅ **Honeypot traps** - 40+ paths; catches WordPress/PHP/k8s scanners
+- ✅ **Scanner UA blocking** - 20+ known tools (sqlmap, nikto, nuclei, gobuster...)
+- ✅ **Deceptive responses** - Fake `.env`, WordPress login, phpMyAdmin, Kubernetes API
+- ✅ **Credential harvesting** - WP login form captures attacker-submitted credentials
+- ✅ **Slow-drip tarpit** - Holds banned connections open (1 byte/3s, up to 10min)
+- ✅ **iptables integration** - Bans enforced at kernel level, survive server restarts
+- ✅ **Persistent bans** - ip_bans DB table, reloaded on startup
+- ✅ **AbuseIPDB reporting** - Auto-reports honeypot hits to global abuse database
+- ✅ **Auth brute-force protection** - 10 attempts/min on login/register; ban after 2 violations
+- ✅ **POST body injection scanning** - SQLi/XSS/SSTI/command injection in request body
+- ✅ **Traffic separation** - Admin traffic logged separately from user/guest
+- ✅ **Admin IP whitelist** - Bypasses all VoidTrap checks for known admin IPs
+- ✅ **SQL injection protection** - URL and body pattern matching
+- ✅ **XSS prevention** - Headers and body scanning
 - ✅ **Path traversal detection**
 
 ### SEO & Performance
@@ -179,6 +186,7 @@ Algorithmic_Acid/
 ### Traffic & Security
 - `traffic_logs` - User/guest traffic (excludes admin)
 - `admin_traffic_logs` - Admin traffic (separate monitoring)
+- `ip_bans` - Persistent IP ban list (loaded by VoidTrap on startup)
 - `crypto_payments` - BTC/XMR payment tracking
 
 ## Installation & Setup
@@ -232,6 +240,8 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_PUBLISHABLE_KEY=pk_test_...
 UPLOADS_DIR=/path/to/uploads
 DOWNLOADS_DIR=/path/to/downloads
+ABUSEIPDB_API_KEY=your_abuseipdb_key   # optional - auto-reports attackers
+ADMIN_IPS=1.2.3.4,5.6.7.8             # comma-separated admin IP whitelist
 ```
 
 **Frontend (.env)**
@@ -312,22 +322,33 @@ The included `deploy.ps1` script automates deployment:
 - `POST /api/admin/security/ban` - Ban IP address
 - `GET /api/admin/security/trapped` - Honeypot hits
 
-## Security Best Practices
+## Security Architecture
 
-### VoidTrap Middleware
-Automatically protects against:
-- WordPress/PHP scanner bots
-- SQL injection attempts
-- Path traversal attacks
-- XSS attempts
-- Rate limit violations
-- Oversized payloads
+### VoidTrap Middleware (Active Defense)
+
+Requests pass through 8 checks in order:
+
+1. **Blacklist + Slow-drip tarpit** — Banned IPs get a connection held open (1 byte/3s, up to 10min), draining scanner connection pools
+2. **Scanner UA blocking** — 20+ known tools (sqlmap, nikto, nuclei, gobuster, etc.) banned on first request
+3. **Global rate limiting** — 50 req/10s per IP; violations trigger ban + iptables DROP rule
+4. **Auth brute-force protection** — 10 login attempts/min; IP banned after 2 violations
+5. **Honeypot paths** — 40+ trap paths return convincing fake responses:
+   - `/.env` → Fake credentials file (looks real to scanners)
+   - `/wp-login.php` → Fake WordPress login (logs any credentials submitted)
+   - `/phpmyadmin` → Fake phpMyAdmin page
+   - `/api/v1/pods` → Fake Kubernetes API JSON
+   - `/actuator/env` → Fake Spring Boot actuator response
+   - Everything else → Glitch screen with fake error dump
+6. **URL pattern matching** — PHP/ASP/JSP extensions, SQLi patterns, path traversal
+7. **POST body scanning** — Recursive SQLi, XSS, SSTI, command injection detection
+8. **Oversized payload blocking** — 5MB limit
+
+All bans: written to `ip_bans` DB table + iptables DROP rule (survive restarts) + AbuseIPDB report.
 
 ### Traffic Separation
-- Admin traffic → `admin_traffic_logs` table
-- User traffic → `traffic_logs` table
-- In-memory logs exclude admin traffic
-- Clean security monitoring without admin noise
+- Admin IPs → `admin_traffic_logs` table (whitelisted in `ADMIN_IPS` env var)
+- User/guest traffic → `traffic_logs` table
+- VoidTrap completely skips admin IPs (no rate limiting, no honeypot)
 
 ## SEO Configuration
 

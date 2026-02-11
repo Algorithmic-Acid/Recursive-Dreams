@@ -72,6 +72,11 @@ const BODY_INJECTION_PATTERNS = [
   /\{\{.*?\}\}/,
 ];
 
+// Admin IP whitelist - these IPs completely bypass voidTrap (same env var as requestLogger)
+const ADMIN_IP_WHITELIST = new Set(
+  (process.env.ADMIN_IPS || '').split(',').map(ip => ip.trim()).filter(Boolean)
+);
+
 // ─── IN-MEMORY STATE ───
 interface BannedIP { bannedAt: number; reason: string; hits: number; }
 interface RateEntry { count: number; windowStart: number; }
@@ -425,6 +430,14 @@ const persistBan = (ip: string, reason: string, expiresAt: Date) => {
 
 // ─── BAN IP (combines all ban actions) ───
 const banIP = (ip: string, reason: string, path: string, userAgent: string) => {
+  // Never ban private/loopback IPs or admin IPs
+  if (
+    ip === 'unknown' ||
+    ip === '::1' ||               // IPv6 loopback
+    ip.startsWith('::ffff:127.') || // IPv4-mapped IPv6 loopback
+    PRIVATE_IP.test(ip) ||
+    ADMIN_IP_WHITELIST.has(ip)
+  ) return;
   const expiresAt = new Date(Date.now() + BAN_DURATION_MS);
   blacklist.set(ip, { bannedAt: Date.now(), reason, hits: 1 });
   persistBan(ip, reason, expiresAt);
@@ -463,6 +476,9 @@ export const loadPersistedBans = async (): Promise<void> => {
 // ─── THE VOID TRAP MIDDLEWARE ───
 export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
   const ip = getIP(req);
+
+  // Admin IPs bypass all checks entirely
+  if (ADMIN_IP_WHITELIST.has(ip)) return next();
   const userAgent = (req.headers['user-agent'] || '').toString();
   const path = req.path.toLowerCase();
   const now = Date.now();
