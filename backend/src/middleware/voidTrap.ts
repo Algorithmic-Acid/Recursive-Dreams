@@ -78,27 +78,46 @@ const ADMIN_IP_WHITELIST = new Set(
 );
 
 // ─── IN-MEMORY STATE ───
-interface BannedIP { bannedAt: number; reason: string; hits: number; }
+// expiresAt: null = permanent ban
+interface BannedIP { bannedAt: number; reason: string; hits: number; expiresAt: number | null; }
 interface RateEntry { count: number; windowStart: number; }
 interface AuthRateEntry { count: number; windowStart: number; violations: number; }
 
-const blacklist = new Map<string, BannedIP>();
-const rateLimits = new Map<string, RateEntry>();
+const blacklist    = new Map<string, BannedIP>();
+const offenseCount = new Map<string, number>();   // total times an IP has been banned (persists across restarts)
+const rateLimits   = new Map<string, RateEntry>();
 const authRateLimits = new Map<string, AuthRateEntry>();
 
-const RATE_WINDOW_MS = 10_000;
-const RATE_MAX_REQUESTS = 50;
-const BAN_DURATION_MS = 30 * 60_000;
-const AUTH_RATE_WINDOW_MS = 60_000;
-const AUTH_MAX_REQUESTS = 10;
-const AUTH_BAN_VIOLATIONS = 2;
+const RATE_WINDOW_MS     = 10_000;
+const RATE_MAX_REQUESTS  = 50;
+const AUTH_RATE_WINDOW_MS  = 60_000;
+const AUTH_MAX_REQUESTS    = 10;
+const AUTH_BAN_VIOLATIONS  = 2;
 const AUTH_PATHS = ['/api/auth/login', '/api/auth/register'];
+
+// ─── ESCALATING BAN TIERS ───
+// Offense count is cumulative and persists across server restarts (loaded from DB hits column).
+// null duration = permanent ban (iptables DROP rule + no expiry in DB).
+const BAN_TIERS: Array<{ maxOffense: number; ms: number; label: string }> = [
+  { maxOffense: 1, ms: 30 * 60_000,            label: '30 minutes' },
+  { maxOffense: 2, ms: 2  * 60 * 60_000,       label: '2 hours'    },
+  { maxOffense: 3, ms: 24 * 60 * 60_000,       label: '24 hours'   },
+  { maxOffense: 4, ms: 7  * 24 * 60 * 60_000,  label: '7 days'     },
+  // offense 5+ → permanent (null)
+];
+
+const getBanTier = (offenses: number): { ms: number | null; label: string } => {
+  const tier = BAN_TIERS.find(t => offenses <= t.maxOffense);
+  return tier ?? { ms: null, label: 'permanent' };
+};
 
 // ─── CLEANUP ───
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, ban] of blacklist)
-    if (now - ban.bannedAt > BAN_DURATION_MS) blacklist.delete(ip);
+  for (const [ip, ban] of blacklist) {
+    // null expiresAt = permanent; never evict from memory
+    if (ban.expiresAt !== null && now > ban.expiresAt) blacklist.delete(ip);
+  }
   for (const [ip, entry] of rateLimits)
     if (now - entry.windowStart > RATE_WINDOW_MS * 2) rateLimits.delete(ip);
   for (const [ip, entry] of authRateLimits)
@@ -429,7 +448,8 @@ const logTrapHit = (ip: string, path: string, reason: string, userAgent: string)
 };
 
 // ─── PERSIST BAN TO DB ───
-const persistBan = (ip: string, reason: string, expiresAt: Date) => {
+// expiresAt = null means permanent ban (stored as NULL in DB)
+const persistBan = (ip: string, reason: string, expiresAt: Date | null) => {
   db.query(
     `INSERT INTO ip_bans (ip_address, reason, hits, banned_at, expires_at)
      VALUES ($1, $2, 1, NOW(), $3)
@@ -449,35 +469,49 @@ const banIP = (ip: string, reason: string, path: string, userAgent: string, cate
     PRIVATE_IP.test(ip) ||
     ADMIN_IP_WHITELIST.has(ip)
   ) return;
-  const expiresAt = new Date(Date.now() + BAN_DURATION_MS);
-  blacklist.set(ip, { bannedAt: Date.now(), reason, hits: 1 });
+
+  // Escalate based on cumulative offense count
+  const offenses = (offenseCount.get(ip) ?? 0) + 1;
+  offenseCount.set(ip, offenses);
+  const { ms: durationMs, label: durationLabel } = getBanTier(offenses);
+  const expiresAt = durationMs ? new Date(Date.now() + durationMs) : null;
+
+  blacklist.set(ip, { bannedAt: Date.now(), reason, hits: 1, expiresAt: expiresAt?.getTime() ?? null });
   persistBan(ip, reason, expiresAt);
   banWithIptables(ip);
-  logTrapHit(ip, path, reason, userAgent);
-  reportToAbuseIPDB(ip, reason, path, categories);
+  const escalatedReason = `[offense #${offenses} → ${durationLabel}] ${reason}`;
+  logTrapHit(ip, path, escalatedReason, userAgent);
+  reportToAbuseIPDB(ip, escalatedReason, path, categories);
 };
 
 // ─── LOAD PERSISTED BANS ON STARTUP ───
 export const loadPersistedBans = async (): Promise<void> => {
   try {
-    await db.query(`DELETE FROM ip_bans WHERE expires_at < NOW()`);
+    // Only delete expired non-permanent bans older than 90 days (keep history for offense count)
+    await db.query(`DELETE FROM ip_bans WHERE expires_at IS NOT NULL AND expires_at < NOW() - INTERVAL '90 days'`);
 
+    // Load active bans (not yet expired) AND permanent bans (expires_at IS NULL)
     const result = await db.query(
-      `SELECT ip_address, reason, hits, banned_at FROM ip_bans WHERE expires_at > NOW()`
+      `SELECT ip_address, reason, hits, banned_at, expires_at FROM ip_bans
+       WHERE expires_at > NOW() OR expires_at IS NULL`
     );
 
     for (const row of result.rows) {
+      const expiresAt = row.expires_at ? new Date(row.expires_at).getTime() : null;
       blacklist.set(row.ip_address, {
         bannedAt: new Date(row.banned_at).getTime(),
         reason: row.reason,
         hits: row.hits,
+        expiresAt,
       });
-      // Re-apply iptables rules so they survive server restarts
+      // Seed offense count from DB hits so escalation persists across restarts
+      offenseCount.set(row.ip_address, row.hits);
       banWithIptables(row.ip_address);
     }
 
+    const permanent = result.rows.filter(r => r.expires_at === null).length;
     if (result.rowCount && result.rowCount > 0) {
-      console.log(`🛡️ Loaded ${result.rowCount} persisted IP bans (iptables rules re-applied)`);
+      console.log(`🛡️ Loaded ${result.rowCount} persisted IP bans (${permanent} permanent) — iptables rules re-applied`);
     }
   } catch (err: any) {
     console.error('Failed to load persisted bans:', err.message);
@@ -619,23 +653,26 @@ VOID_VENDOR SECURITY SYSTEM v6.6.6
 
 // ─── ADMIN: Get blacklist status ───
 export const getBlacklistStatus = () => {
-  const entries: Array<{ ip: string; reason: string; hits: number; bannedAt: string; expiresIn: string }> = [];
+  const entries: Array<{ ip: string; reason: string; hits: number; bannedAt: string; expiresIn: string; offenses: number }> = [];
   const now = Date.now();
   for (const [ip, ban] of blacklist) {
-    const remaining = BAN_DURATION_MS - (now - ban.bannedAt);
-    if (remaining > 0) {
-      entries.push({
-        ip, reason: ban.reason, hits: ban.hits,
-        bannedAt: new Date(ban.bannedAt).toISOString(),
-        expiresIn: `${Math.round(remaining / 60_000)}m`,
-      });
-    }
+    const expiresIn = ban.expiresAt === null
+      ? 'permanent'
+      : `${Math.round(Math.max(0, ban.expiresAt - now) / 60_000)}m`;
+    entries.push({
+      ip, reason: ban.reason, hits: ban.hits,
+      bannedAt: new Date(ban.bannedAt).toISOString(),
+      expiresIn,
+      offenses: offenseCount.get(ip) ?? 1,
+    });
   }
+  const tierSummary = BAN_TIERS.map(t => `offense ${t.maxOffense}: ${t.label}`).join(', ') + ', offense 5+: permanent';
   return {
     totalBanned: entries.length,
+    permanent: entries.filter(e => e.expiresIn === 'permanent').length,
     trackedIPs: rateLimits.size,
     activeTarpits: activeTarpitCount,
-    banDuration: '30 minutes',
+    escalationTiers: tierSummary,
     rateLimit: `${RATE_MAX_REQUESTS} req/${RATE_WINDOW_MS / 1000}s`,
     authRateLimit: `${AUTH_MAX_REQUESTS} auth req/min, ban after ${AUTH_BAN_VIOLATIONS} violations`,
     entries,
@@ -643,10 +680,14 @@ export const getBlacklistStatus = () => {
 };
 
 // ─── ADMIN: Manual ban ───
-export const manualBan = (ip: string, reason: string = 'Manual admin ban') => {
-  const expiresAt = new Date(Date.now() + BAN_DURATION_MS);
-  blacklist.set(ip, { bannedAt: Date.now(), reason, hits: 0 });
-  persistBan(ip, reason, expiresAt);
+// Respects the escalation system; pass permanent=true to skip the tiers entirely.
+export const manualBan = (ip: string, reason: string = 'Manual admin ban', permanent = false) => {
+  const offenses = (offenseCount.get(ip) ?? 0) + 1;
+  offenseCount.set(ip, offenses);
+  const { ms: durationMs, label: durationLabel } = permanent ? { ms: null, label: 'permanent' } : getBanTier(offenses);
+  const expiresAt = durationMs ? new Date(Date.now() + durationMs) : null;
+  blacklist.set(ip, { bannedAt: Date.now(), reason, hits: 0, expiresAt: expiresAt?.getTime() ?? null });
+  persistBan(ip, `[manual, offense #${offenses} → ${durationLabel}] ${reason}`, expiresAt);
   banWithIptables(ip);
 };
 
