@@ -363,17 +363,28 @@ input[type=submit]{background:#4e6d8c;color:#fff;border:none;cursor:pointer}
   return null; // Fall through to default glitch screen
 };
 
+// ─── ABUSEIPDB CATEGORY CODES ───
+// 4=DDoS, 14=Port Scan, 15=Hacking, 16=SQL Injection, 18=Brute-Force, 19=Bad Web Bot, 21=Web App Attack
+export const ABUSE_CATEGORIES = {
+  SCANNER_UA:      '14,19,21', // Port Scan + Bad Web Bot + Web App Attack
+  RATE_LIMIT:      '4,21',     // DDoS Attack + Web App Attack
+  BRUTE_FORCE:     '18,21',    // Brute-Force + Web App Attack
+  SQL_INJECTION:   '16,21',    // SQL Injection + Web App Attack
+  HACKING:         '15,21',    // Hacking + Web App Attack
+} as const;
+
 // ─── REPORT TO ABUSEIPDB ───
-const reportToAbuseIPDB = (ip: string, reason: string, path: string) => {
+const reportToAbuseIPDB = (ip: string, reason: string, path: string, categories: string = ABUSE_CATEGORIES.HACKING) => {
   const apiKey = process.env.ABUSEIPDB_API_KEY;
   if (!apiKey || ip === 'unknown') return;
   // Skip private/internal IPs
   if (/^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(ip)) return;
 
+  const ua = reason.length < 80 ? reason : reason.substring(0, 80);
   const data = new URLSearchParams({
     ip,
-    categories: '19,21', // Bad Web Bot, Web App Attack
-    comment: `VoidTrap: ${reason.substring(0, 100)} at ${path.substring(0, 100)}`,
+    categories,
+    comment: `VoidTrap [${categories}]: ${ua} | path: ${path.substring(0, 80)}`,
   }).toString();
 
   const req = https.request({
@@ -429,7 +440,7 @@ const persistBan = (ip: string, reason: string, expiresAt: Date) => {
 };
 
 // ─── BAN IP (combines all ban actions) ───
-const banIP = (ip: string, reason: string, path: string, userAgent: string) => {
+const banIP = (ip: string, reason: string, path: string, userAgent: string, categories: string = ABUSE_CATEGORIES.HACKING) => {
   // Never ban private/loopback IPs or admin IPs
   if (
     ip === 'unknown' ||
@@ -443,7 +454,7 @@ const banIP = (ip: string, reason: string, path: string, userAgent: string) => {
   persistBan(ip, reason, expiresAt);
   banWithIptables(ip);
   logTrapHit(ip, path, reason, userAgent);
-  reportToAbuseIPDB(ip, reason, path);
+  reportToAbuseIPDB(ip, reason, path, categories);
 };
 
 // ─── LOAD PERSISTED BANS ON STARTUP ───
@@ -495,7 +506,7 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
   // 2. SCANNER USER-AGENT - instant ban
   for (const pattern of SCANNER_UA_PATTERNS) {
     if (pattern.test(userAgent)) {
-      banIP(ip, `Scanner UA: ${userAgent.substring(0, 80)}`, req.path, userAgent);
+      banIP(ip, `Scanner UA: ${userAgent.substring(0, 80)}`, req.path, userAgent, ABUSE_CATEGORIES.SCANNER_UA);
       res.status(403).send('Forbidden');
       return;
     }
@@ -510,7 +521,7 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
     } else {
       rateEntry.count++;
       if (rateEntry.count > RATE_MAX_REQUESTS) {
-        banIP(ip, 'Rate limit exceeded', req.path, userAgent);
+        banIP(ip, 'Rate limit exceeded', req.path, userAgent, ABUSE_CATEGORIES.RATE_LIMIT);
         res.status(429).json({ error: 'Rate limit exceeded. Try again later.' });
         return;
       }
@@ -532,7 +543,7 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
           authEntry.violations++;
           logTrapHit(ip, req.path, `AUTH RATE LIMIT violation #${authEntry.violations}`, userAgent);
           if (authEntry.violations >= AUTH_BAN_VIOLATIONS) {
-            banIP(ip, `Brute force: ${authEntry.violations} auth violations`, req.path, userAgent);
+            banIP(ip, `Brute force: ${authEntry.violations} auth violations`, req.path, userAgent, ABUSE_CATEGORIES.BRUTE_FORCE);
           }
           res.status(429).json({ error: 'Too many login attempts. Please wait and try again.' });
           return;
@@ -573,9 +584,11 @@ VOID_VENDOR SECURITY SYSTEM v6.6.6
 
   // 6. URL PATTERN MATCHING
   const originalUrl = req.originalUrl || req.url;
+  const SQL_URL_PATTERNS = /union\s+select|;\s*drop\s|\bOR\b\s+1\s*=\s*1/i;
   for (const pattern of TRAP_PATTERNS) {
     if (pattern.test(originalUrl)) {
-      banIP(ip, `Pattern match: ${pattern.source}`, req.path, userAgent);
+      const cats = SQL_URL_PATTERNS.test(originalUrl) ? ABUSE_CATEGORIES.SQL_INJECTION : ABUSE_CATEGORIES.HACKING;
+      banIP(ip, `Pattern match: ${pattern.source}`, req.path, userAgent, cats);
       res.status(400).json({ error: 'Bad request' });
       return;
     }
@@ -585,7 +598,9 @@ VOID_VENDOR SECURITY SYSTEM v6.6.6
   if (req.body && typeof req.body === 'object') {
     const hit = scanBodyValue(req.body);
     if (hit) {
-      banIP(ip, `Body injection: ${hit}`, req.path, userAgent);
+      const isSqli = /union.*select|drop\s+(table|database)|'\s*or\s+|xp_cmdshell|sp_executesql/i.test(hit);
+      const cats = isSqli ? ABUSE_CATEGORIES.SQL_INJECTION : ABUSE_CATEGORIES.HACKING;
+      banIP(ip, `Body injection: ${hit}`, req.path, userAgent, cats);
       res.status(400).json({ error: 'Bad request' });
       return;
     }
