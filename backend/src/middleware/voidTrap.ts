@@ -670,8 +670,9 @@ export const getBlacklistStatus = () => {
   return {
     totalBanned: entries.length,
     permanent: entries.filter(e => e.expiresIn === 'permanent').length,
-    trackedIPs: rateLimits.size,
+    trackedIPs: offenseCount.size,   // unique IPs ever caught (persists across restarts via DB)
     activeTarpits: activeTarpitCount,
+    banDuration: 'escalating (5 tiers)',
     escalationTiers: tierSummary,
     rateLimit: `${RATE_MAX_REQUESTS} req/${RATE_WINDOW_MS / 1000}s`,
     authRateLimit: `${AUTH_MAX_REQUESTS} auth req/min, ban after ${AUTH_BAN_VIOLATIONS} violations`,

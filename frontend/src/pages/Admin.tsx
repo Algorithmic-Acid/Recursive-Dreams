@@ -1828,16 +1828,16 @@ export const Admin = () => {
             {blacklistData && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
                 <div className="bg-dark-card border border-red-500/20 rounded-lg p-3 sm:p-4">
-                  <div className="text-white/60 font-mono text-[9px] sm:text-xs mb-1">BANNED_IPs</div>
+                  <div className="text-white/60 font-mono text-[9px] sm:text-xs mb-1">ACTIVE_BANS</div>
                   <div className="text-lg sm:text-2xl font-bold text-red-400">{blacklistData.totalBanned}</div>
                 </div>
                 <div className="bg-dark-card border border-orange-500/20 rounded-lg p-3 sm:p-4">
-                  <div className="text-white/60 font-mono text-[9px] sm:text-xs mb-1">TRACKED_IPs</div>
-                  <div className="text-lg sm:text-2xl font-bold text-orange-400">{blacklistData.trackedIPs}</div>
+                  <div className="text-white/60 font-mono text-[9px] sm:text-xs mb-1">PERMANENT</div>
+                  <div className="text-lg sm:text-2xl font-bold text-orange-400">{blacklistData.permanent ?? 0}</div>
                 </div>
                 <div className="bg-dark-card border border-cyan-500/20 rounded-lg p-3 sm:p-4">
-                  <div className="text-white/60 font-mono text-[9px] sm:text-xs mb-1">BAN_DURATION</div>
-                  <div className="text-lg sm:text-2xl font-bold text-cyan-400 text-sm sm:text-lg">{blacklistData.banDuration}</div>
+                  <div className="text-white/60 font-mono text-[9px] sm:text-xs mb-1">TRACKED_IPs</div>
+                  <div className="text-lg sm:text-2xl font-bold text-cyan-400">{blacklistData.trackedIPs}</div>
                 </div>
                 <div className="bg-dark-card border border-purple-500/20 rounded-lg p-3 sm:p-4">
                   <div className="text-white/60 font-mono text-[9px] sm:text-xs mb-1">RATE_LIMIT</div>
@@ -1887,17 +1887,25 @@ export const Admin = () => {
                         <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs">IP</th>
                         <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs">REASON</th>
                         <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs">HITS</th>
+                        <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs hidden sm:table-cell">OFFENSE</th>
                         <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs hidden sm:table-cell">EXPIRES</th>
                         <th className="px-2 sm:px-4 py-2 text-right text-red-400 font-mono text-[10px] sm:text-xs">ACTION</th>
                       </tr>
                     </thead>
                     <tbody>
                       {blacklistData?.entries.map((entry: any, idx: number) => (
-                        <tr key={idx} className="border-b border-white/5 hover:bg-red-500/5">
-                          <td className="px-2 sm:px-4 py-2 text-white font-mono text-[10px] sm:text-xs">{entry.ip}</td>
+                        <tr key={idx} className={`border-b border-white/5 ${entry.expiresIn === 'permanent' ? 'bg-red-900/10 hover:bg-red-900/20' : 'hover:bg-red-500/5'}`}>
+                          <td className="px-2 sm:px-4 py-2 font-mono text-[10px] sm:text-xs">
+                            <span className={entry.expiresIn === 'permanent' ? 'text-red-300 font-bold' : 'text-white'}>{entry.ip}</span>
+                          </td>
                           <td className="px-2 sm:px-4 py-2 text-white/70 text-[10px] sm:text-xs truncate max-w-[150px]">{entry.reason}</td>
                           <td className="px-2 sm:px-4 py-2 text-orange-400 font-mono text-[10px] sm:text-xs">{entry.hits}</td>
-                          <td className="px-2 sm:px-4 py-2 text-white/50 font-mono text-[10px] sm:text-xs hidden sm:table-cell">{entry.expiresIn}</td>
+                          <td className="px-2 sm:px-4 py-2 font-mono text-[10px] sm:text-xs hidden sm:table-cell">
+                            <span className={entry.offenses >= 5 ? 'text-red-400 font-bold' : 'text-yellow-400'}>#{entry.offenses ?? 1}</span>
+                          </td>
+                          <td className="px-2 sm:px-4 py-2 font-mono text-[10px] sm:text-xs hidden sm:table-cell">
+                            <span className={entry.expiresIn === 'permanent' ? 'text-red-400 font-bold' : 'text-white/50'}>{entry.expiresIn}</span>
+                          </td>
                           <td className="px-2 sm:px-4 py-2 text-right">
                             <button
                               type="button"
