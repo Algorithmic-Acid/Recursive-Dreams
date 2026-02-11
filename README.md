@@ -61,6 +61,7 @@ A full-stack e-commerce platform for VST plugins with cyberpunk aesthetics. Feat
 - ✅ Monero (XMR) donations
 - ✅ QR code generation
 - ✅ Anonymous donation support
+- ✅ Live BTC/XMR ↔ USD price converter (CoinGecko, auto-refreshes)
 
 ### Admin Panel
 - ✅ Comprehensive dashboard
@@ -148,6 +149,7 @@ Algorithmic_Acid/
 │   │   │   ├── AuthModal.tsx
 │   │   │   ├── Avatar.tsx
 │   │   │   ├── StripeDonation.tsx
+│   │   │   ├── CryptoConverter.tsx
 │   │   │   ├── SEO.tsx
 │   │   │   └── Footer.tsx
 │   │   ├── pages/

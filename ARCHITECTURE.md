@@ -170,6 +170,7 @@ frontend/src/
 │   ├── AuthModal.tsx       # Login/register modal
 │   ├── Avatar.tsx          # User avatar (image or letter fallback)
 │   ├── StripeDonation.tsx  # Stripe Elements donation widget
+│   ├── CryptoConverter.tsx # Live BTC/XMR ↔ USD two-way converter (CoinGecko)
 │   ├── SEO.tsx             # Dynamic meta tags, Open Graph, structured data
 │   └── Footer.tsx          # Links, socials, copyright
 ├── pages/
@@ -251,7 +252,7 @@ App (React Router)
     │   └── Comment threads
     ├── /profile → UserProfile (own, editable)
     ├── /profile/:userId → UserProfile (public, read-only)
-    ├── /donate → Donate
+    ├── /donate → Donate (Stripe + BTC + XMR + CryptoConverter per coin)
     ├── /admin → Admin (admin role required)
     │   ├── Dashboard stats
     │   ├── User management
@@ -365,6 +366,17 @@ POST /api/payments/donate → separate donation PaymentIntent
 ```
 POST /api/payments/crypto/create → record crypto_payments row with wallet address
 POST /api/payments/crypto/submit-tx → user submits tx hash → admin reviews
+```
+
+### CryptoConverter (frontend only)
+```
+CryptoConverter component (CryptoConverter.tsx)
+  ├─ Fetches live price: GET https://api.coingecko.com/api/v3/simple/price
+  │   ?ids=bitcoin|monero&vs_currencies=usd
+  ├─ Auto-refreshes every 60 seconds
+  ├─ Two-way input: USD ↔ BTC or USD ↔ XMR
+  ├─ Rendered inside Donate.tsx (one per coin card)
+  └─ Rendered inside Checkout.tsx (below crypto address, before Pay button)
 ```
 
 ## API Endpoints Reference

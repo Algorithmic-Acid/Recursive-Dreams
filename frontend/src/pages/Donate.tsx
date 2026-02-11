@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Copy, Check, QrCode, Zap, Heart } from 'lucide-react';
 import { Footer } from '../components/Footer';
 import { StripeDonation } from '../components/StripeDonation';
+import { CryptoConverter } from '../components/CryptoConverter';
 import toast from 'react-hot-toast';
 
 // Wallet Addresses
@@ -144,6 +145,8 @@ export const Donate = () => {
             >
               Copy BTC Address
             </button>
+
+            <CryptoConverter coin="btc" />
           </div>
 
           {/* Monero Section */}
@@ -210,6 +213,8 @@ export const Donate = () => {
             >
               Copy XMR Address
             </button>
+
+            <CryptoConverter coin="xmr" />
           </div>
         </div>
 

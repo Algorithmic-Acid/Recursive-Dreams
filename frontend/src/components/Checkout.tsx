@@ -13,6 +13,7 @@ import { orderAPI } from '../services/orderApi';
 import { paymentAPI } from '../services/paymentApi';
 import { ShippingAddress } from '../types/order';
 import toast from 'react-hot-toast';
+import { CryptoConverter } from './CryptoConverter';
 
 const BTC_ADDRESS = 'bc1qce33yheyq24l7x90zer5q866nx6tyx2j5atp2y';
 const XMR_ADDRESS = '84SyqhuxFyg7n4VEvuRq6P1CjUVXYgSca6s9oB6RAmnL4qwNRk3YVQJNKF5WZtcQDjBHFEfv6t6NBYqHzcYuVsNEBkqUiVE';
@@ -605,6 +606,8 @@ const CheckoutForm = ({ onClose }: { onClose: () => void }) => {
                       </button>
                     </div>
                   </div>
+
+                  <CryptoConverter coin={selectedCrypto} />
 
                   <button
                     type="button"
