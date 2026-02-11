@@ -63,13 +63,13 @@ export const Donate = () => {
       <main className="container mx-auto px-4 py-8 md:py-12">
         {/* Page Title */}
         <div className="text-center mb-10 md:mb-16">
-          <div className="inline-flex items-center gap-3 mb-4">
-            <Heart className="w-8 h-8 text-pink-500 animate-pulse" />
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white">
+          <div className="flex items-center justify-center gap-3 mb-4 flex-wrap">
+            <Heart className="w-7 h-7 sm:w-8 sm:h-8 text-pink-500 animate-pulse shrink-0" />
+            <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold text-white">
               Support <span className="bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">Void Vendor</span>
             </h1>
           </div>
-          <p className="text-white/60 text-lg max-w-2xl mx-auto">
+          <p className="text-white/60 text-base sm:text-lg max-w-2xl mx-auto">
             Your donations help us create more free VST plugins and keep the void alive.
             We accept card payments, Bitcoin, and Monero.
           </p>
@@ -120,7 +120,7 @@ export const Donate = () => {
             <div className="mb-6">
               <p className="text-white/50 text-xs mb-2 font-mono">BTC ADDRESS</p>
               <div className="flex items-stretch gap-2">
-                <code className="flex-1 text-sm text-amber-300 bg-black/40 p-4 rounded-xl break-all font-mono leading-relaxed">
+                <code className="flex-1 text-[10px] sm:text-xs text-amber-300 bg-black/40 p-4 rounded-xl break-all font-mono leading-relaxed">
                   {BTC_ADDRESS}
                 </code>
                 <button
@@ -220,7 +220,7 @@ export const Donate = () => {
 
         {/* Thank You Message */}
         <div className="text-center mt-12 md:mt-16">
-          <div className="inline-block p-6 md:p-8 bg-dark-card border border-cyan-500/20 rounded-2xl max-w-2xl">
+          <div className="block w-full max-w-2xl mx-auto p-6 md:p-8 bg-dark-card border border-cyan-500/20 rounded-2xl">
             <Heart className="w-12 h-12 text-pink-500 mx-auto mb-4" />
             <h3 className="text-xl md:text-2xl font-bold text-white mb-3">Thank You for Your Support!</h3>
             <p className="text-white/60">
