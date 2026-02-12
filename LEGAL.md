@@ -22,8 +22,10 @@ VoidTrap is a server-side middleware layer that protects Void Vendor's infrastru
 
 **Response mechanisms:**
 - **Honeypot paths**: Fake but convincing responses (`.env`, `wp-login.php`, phpMyAdmin, Kubernetes API, etc.) that attract and identify automated scanners
+- **Deception layering**: 15% of honeypot hits return a `503 Service Temporarily Unavailable` to make scanners believe the server has crashed; certain trap paths issue infinite 302 redirect cycles to waste scanner threads
 - **Credential harvesting from attackers**: WordPress login form captures credentials submitted by attackers — this data is stored for security analysis only and is never used to access third-party systems
 - **Slow-drip tarpit**: Banned connections are held open (1 byte/3 seconds, max 10 minutes) to exhaust scanner connection pools — this is a passive resource consumption technique applied only to already-banned IPs
+- **Smart alerting**: Automated detection of credential stuffing attacks, ban evasion attempts, IP rotation campaigns, and admin IP anomalies — alerts are surfaced in the admin dashboard for human review
 - **Escalating bans**: Repeat offenders face progressively longer bans up to permanent
 - **iptables integration**: Bans are enforced at the kernel level, not just application level
 - **AbuseIPDB reporting**: Confirmed attackers are automatically reported to the global AbuseIPDB database with appropriate category codes
@@ -39,6 +41,8 @@ All active defense measures are applied only to traffic that first contacts **ou
 **Honeypots are lawful.** Deploying fake endpoints on your own server to detect unauthorized access attempts is a widely accepted and legal practice. Courts in the US and EU have consistently held that honeypots on your own infrastructure do not constitute entrapment or unauthorized computer access.
 
 **Tarpitting is lawful.** Deliberately slowing responses to already-banned IPs to waste attacker resources is a passive defensive technique applied to traffic already directed at our servers. This is analogous to a firewall DROP rule with added friction.
+
+**Deceptive responses are lawful.** Serving `503` errors or redirect loops to scanners probing our own infrastructure is a well-established defensive technique (analogous to a firewall sending TCP RST or ICMP port unreachable). We are not misrepresenting anything to good-faith users — these responses only trigger in response to requests for paths that no legitimate user would access.
 
 **AbuseIPDB reporting** is performed in good faith under their [Terms of Service](https://www.abuseipdb.com/terms). We report only IPs that have demonstrated hostile behavior against our infrastructure. Reports include category codes and evidence-based descriptions.
 
@@ -151,4 +155,4 @@ Void Vendor is operated in accordance with:
 
 ---
 
-*Last updated: 2026-02-11*
+*Last updated: 2026-02-11 — Added deception layering, redirect loop traps, smart alert system*

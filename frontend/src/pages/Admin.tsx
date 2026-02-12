@@ -171,6 +171,9 @@ export const Admin = () => {
   const [trappedRequests, setTrappedRequests] = useState<any[]>([]);
   const [banIpInput, setBanIpInput] = useState('');
   const [banReasonInput, setBanReasonInput] = useState('');
+  const [threatAlerts, setThreatAlerts] = useState<any[]>([]);
+  const [honeypotHeatmap, setHoneypotHeatmap] = useState<any[]>([]);
+  const [attackTimeline, setAttackTimeline] = useState<any[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -325,22 +328,52 @@ export const Admin = () => {
   const fetchSecurityData = async () => {
     const token = localStorage.getItem('token');
     try {
-      const [blacklistRes, trappedRes] = await Promise.all([
-        fetch(`${API_URL}/api/admin/security/blacklist`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        fetch(`${API_URL}/api/admin/security/trapped`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+      const [blacklistRes, trappedRes, alertsRes, heatmapRes, timelineRes] = await Promise.all([
+        fetch(`${API_URL}/api/admin/security/blacklist`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/admin/security/trapped`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/admin/security/alerts`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/admin/security/honeypot-heatmap`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/admin/security/attack-timeline`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-      const blacklistJson = await blacklistRes.json();
-      const trappedJson = await trappedRes.json();
+      const [blacklistJson, trappedJson, alertsJson, heatmapJson, timelineJson] = await Promise.all([
+        blacklistRes.json(), trappedRes.json(), alertsRes.json(), heatmapRes.json(), timelineRes.json()
+      ]);
       if (blacklistJson.success) setBlacklistData(blacklistJson.data);
       if (trappedJson.success) setTrappedRequests(trappedJson.data);
+      if (alertsJson.success) setThreatAlerts(alertsJson.data);
+      if (heatmapJson.success) setHoneypotHeatmap(heatmapJson.data);
+      if (timelineJson.success) setAttackTimeline(timelineJson.data.map((r: any) => ({
+        hour: new Date(r.hour).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', hour12: false }),
+        honeypot: Number(r.honeypot_hits),
+        rateLimit: Number(r.rate_limit_hits),
+        blocked: Number(r.blocked_requests),
+        creds: Number(r.cred_harvests),
+      })));
     } catch (error) {
       console.error('Failed to fetch security data:', error);
       toast.error('Failed to load security data');
     }
+  };
+
+  const handleDismissAlert = async (id: string) => {
+    const token = localStorage.getItem('token');
+    try {
+      await fetch(`${API_URL}/api/admin/security/alerts/${id}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
+      });
+      setThreatAlerts(prev => prev.filter(a => a.id !== id));
+    } catch { toast.error('Failed to dismiss alert'); }
+  };
+
+  const handleDismissAllAlerts = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      await fetch(`${API_URL}/api/admin/security/alerts`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
+      });
+      setThreatAlerts([]);
+      toast.success('All alerts dismissed');
+    } catch { toast.error('Failed to dismiss alerts'); }
   };
 
   const handleBanIp = async () => {
@@ -1842,6 +1875,118 @@ export const Admin = () => {
                 <div className="bg-dark-card border border-purple-500/20 rounded-lg p-3 sm:p-4">
                   <div className="text-white/60 font-mono text-[9px] sm:text-xs mb-1">RATE_LIMIT</div>
                   <div className="text-sm sm:text-lg font-bold text-purple-400">{blacklistData.rateLimit}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Smart Threat Alerts */}
+            {threatAlerts.length > 0 && (
+              <div className="bg-dark-card border border-red-500/40 rounded-lg p-3 sm:p-6">
+                <div className="flex items-center justify-between mb-3 sm:mb-4">
+                  <h3 className="text-sm sm:text-lg font-bold text-red-400 font-mono flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse" />
+                    THREAT_ALERTS ({threatAlerts.length})
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={handleDismissAllAlerts}
+                    className="px-2 py-1 text-[10px] sm:text-xs font-mono bg-white/5 border border-white/10 rounded text-white/50 hover:text-white/70 hover:bg-white/10 transition-all"
+                  >
+                    DISMISS ALL
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {threatAlerts.map((alert: any) => (
+                    <div key={alert.id} className={`flex items-start gap-2 p-2 sm:p-3 rounded-lg border ${
+                      alert.severity === 'CRITICAL' ? 'border-red-500/50 bg-red-900/20' :
+                      alert.severity === 'HIGH'     ? 'border-orange-500/40 bg-orange-900/15' :
+                      alert.severity === 'MEDIUM'   ? 'border-yellow-500/30 bg-yellow-900/10' :
+                                                       'border-white/10 bg-white/5'
+                    }`}>
+                      <div className={`flex-shrink-0 text-[9px] sm:text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${
+                        alert.severity === 'CRITICAL' ? 'bg-red-500/30 text-red-300' :
+                        alert.severity === 'HIGH'     ? 'bg-orange-500/30 text-orange-300' :
+                        alert.severity === 'MEDIUM'   ? 'bg-yellow-500/30 text-yellow-300' :
+                                                         'bg-white/10 text-white/50'
+                      }`}>{alert.severity}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className={`text-[10px] sm:text-xs font-mono font-bold ${
+                            alert.type === 'CREDENTIAL_STUFFING' ? 'text-red-400' :
+                            alert.type === 'ADMIN_HONEYPOT'      ? 'text-pink-400' :
+                            alert.type === 'IP_ROTATION'         ? 'text-purple-400' :
+                            alert.type === 'BAN_EVASION'         ? 'text-orange-400' :
+                                                                    'text-cyan-400'
+                          }`}>{alert.type}</span>
+                          {alert.ip && <span className="text-[9px] font-mono text-white/40">{alert.ip}</span>}
+                        </div>
+                        <p className="text-[10px] sm:text-xs text-white/70">{alert.description}</p>
+                        <p className="text-[9px] text-white/30 font-mono mt-0.5">
+                          {new Date(alert.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        title="Dismiss alert"
+                        aria-label="Dismiss alert"
+                        onClick={() => handleDismissAlert(alert.id)}
+                        className="flex-shrink-0 p-1 hover:bg-white/10 rounded transition-colors"
+                      >
+                        <X className="w-3 h-3 text-white/40 hover:text-white/70" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Attack Timeline Chart */}
+            {attackTimeline.length > 0 && (
+              <div className="bg-dark-card border border-red-500/20 rounded-lg p-3 sm:p-6">
+                <h3 className="text-sm sm:text-lg font-bold text-red-400 mb-3 sm:mb-4 font-mono">ATTACK_TIMELINE (24h)</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={attackTimeline} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="hour" tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }} />
+                    <YAxis tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }} />
+                    <Tooltip contentStyle={{ background: '#0a0a0f', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6 }} labelStyle={{ color: '#fff' }} />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <Bar dataKey="honeypot" name="Honeypot" fill="#ef4444" stackId="a" />
+                    <Bar dataKey="rateLimit" name="Rate Limit" fill="#f97316" stackId="a" />
+                    <Bar dataKey="blocked" name="Blocked" fill="#a855f7" stackId="a" />
+                    <Bar dataKey="creds" name="Cred Harvest" fill="#ec4899" stackId="a" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Honeypot Hit Heatmap */}
+            {honeypotHeatmap.length > 0 && (
+              <div className="bg-dark-card border border-orange-500/20 rounded-lg p-3 sm:p-6">
+                <h3 className="text-sm sm:text-lg font-bold text-orange-400 mb-3 sm:mb-4 font-mono">HONEYPOT_HEATMAP</h3>
+                <div className="space-y-1.5">
+                  {honeypotHeatmap.map((item: any, idx: number) => {
+                    const maxHits = honeypotHeatmap[0]?.hits || 1;
+                    const pct = Math.round((item.hits / maxHits) * 100);
+                    return (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0 flex items-center gap-2">
+                          <div
+                            className={`h-5 rounded flex items-center px-2 transition-all ${
+                              idx === 0 ? 'bg-red-500/50' : idx < 3 ? 'bg-orange-500/40' : 'bg-yellow-500/25'
+                            }`}
+                            style={{ width: `${Math.max(pct, 5)}%` }}
+                          >
+                            <span className="text-[9px] sm:text-[10px] font-mono text-white/90 truncate">{item.path}</span>
+                          </div>
+                          <span className="text-[10px] sm:text-xs font-mono text-white/50 flex-shrink-0">{item.hits}x</span>
+                        </div>
+                        <span className="text-[9px] text-white/30 font-mono flex-shrink-0 hidden sm:inline">
+                          {new Date(item.last_hit).toLocaleDateString()}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

@@ -60,14 +60,16 @@ Express Middleware Chain (server.ts)
   ├─ 2. JSON body parser (5MB limit)
   │
   ├─ 3. VoidTrap middleware (voidTrap.ts)
-  │     ├─ Admin IP whitelist bypass (ADMIN_IPS env var)
-  │     ├─ Blacklist check → slow-drip tarpit if banned
+  │     ├─ Admin IP whitelist bypass (ADMIN_IPS env var) + ADMIN_HONEYPOT alert
+  │     ├─ Blacklist check → slow-drip tarpit if banned + BAN_EVASION alert
   │     ├─ Scanner User-Agent blocking (20+ tools)
   │     ├─ Global rate limit (50 req/10s)
   │     ├─ Auth endpoint rate limit (10/min, ban after 2 violations)
+  │     ├─ Credential stuffing detection → CREDENTIAL_STUFFING alert
   │     ├─ Low-and-slow scanner detection (>40 paths/2min)
-  │     ├─ IP rotation fingerprint detection (no accept-language, 8+ IPs)
-  │     ├─ Honeypot path detection → deceptive response (300–1200ms delay) + ban
+  │     ├─ IP rotation fingerprint detection (no accept-language, 8+ IPs) + IP_ROTATION alert
+  │     ├─ Redirect loop deception (6 trap paths cycle 302 redirects forever)
+  │     ├─ Honeypot path detection → deceptive response (300–1200ms delay, 15% chance 503) + ban
   │     ├─ URL pattern scanning (SQLi, path traversal, bad extensions)
   │     ├─ POST body scanning (SQLi, XSS, SSTI, cmd injection)
   │     └─ Oversized payload blocking (5MB)
@@ -98,7 +100,7 @@ backend/src/
 ├── middleware/
 │   ├── auth.ts               # JWT verification → req.user
 │   ├── requestLogger.ts      # Traffic logging (user vs admin separation)
-│   └── voidTrap.ts           # 8-layer active defense middleware
+│   └── voidTrap.ts           # 11-layer active defense middleware + smart alert system
 ├── repositories/
 │   ├── ProductRepository.ts  # Product CRUD + search
 │   ├── UserRepository.ts     # User CRUD + profile methods
@@ -122,20 +124,33 @@ backend/src/
 
 ### Middleware Chain Detail
 
-**VoidTrap** (`voidTrap.ts`) — 10 checks in order:
+**VoidTrap** (`voidTrap.ts`) — 11 checks in order:
 
 | # | Check | Action on Trigger |
 |---|-------|-------------------|
-| 1 | Blacklisted IP | Slow-drip tarpit (1 byte/3s, up to 10 min) |
+| 1 | Blacklisted IP | Slow-drip tarpit (1 byte/3s, up to 10 min) + BAN_EVASION alert at 50/200/500 hits |
 | 2 | Scanner User-Agent | Instant ban (iptables + DB + AbuseIPDB) |
 | 3 | Global rate limit (50 req/10s) | Instant ban |
-| 4 | Auth brute-force (10/min on login/register) | Ban after 2 violations |
+| 4a | Auth brute-force (10/min on login/register) | Ban after 2 violations |
+| 4b | Credential stuffing (same creds from 3+ IPs/10min) | CREDENTIAL_STUFFING CRITICAL alert |
 | 5 | Low-and-slow scanner (>40 distinct paths/2min) | Instant ban |
-| 6 | IP rotation fingerprint (no accept-language, 8+ IPs same fingerprint) | Instant ban |
-| 7 | Honeypot path hit | Deceptive response (300–1200ms delay) + ban |
+| 6 | IP rotation fingerprint (no accept-language, 8+ IPs same fingerprint) | Instant ban + IP_ROTATION alert |
+| 7a | Redirect loop trap (6 paths cycle 302 → each other) | Ban + 302 redirect loop |
+| 7b | Honeypot path hit | Deceptive response (300–1200ms delay, 15% chance 503) + ban |
 | 8 | URL pattern match (SQLi, traversal, bad ext) | 403 or ban |
 | 9 | POST body injection scan | 403 |
 | 10 | Oversized payload (>5MB) | 413 |
+
+**Admin IP honeypot monitoring:** Admin IPs bypass all checks but trigger a CRITICAL `ADMIN_HONEYPOT` alert if they hit a trap path (indicates possible credential compromise).
+
+**Smart Alert System** (in-memory, up to 100 alerts, exposed via `/api/admin/security/alerts`):
+
+| Alert Type | Severity | Trigger |
+|-----------|----------|---------|
+| `CREDENTIAL_STUFFING` | CRITICAL | Same username+password from 3+ IPs in 10 min |
+| `ADMIN_HONEYPOT` | CRITICAL | Whitelisted admin IP hits a honeypot path |
+| `IP_ROTATION` | HIGH | Same tool fingerprint from 8+ distinct IPs |
+| `BAN_EVASION` | HIGH/MEDIUM | Banned IP makes 50, 200, or 500+ post-ban requests |
 
 **Deceptive honeypot responses by path:**
 - `/.env` → Fake credentials file (Stripe keys, DB password, JWT secret)
@@ -151,7 +166,12 @@ backend/src/
 - `/api/debug`, `/debug` → Fake debug config dump with fake credentials
 - All other honeypot paths → Glitch screen with fake error dump
 
-All honeypot responses include a 300–1200ms random delay to slow scanner throughput.
+All honeypot responses include a 300–1200ms random delay to slow scanner throughput. Additionally, 15% of honeypot hits return a `503 Service Temporarily Unavailable` with a randomized `Retry-After` header to make scanners believe the server has crashed.
+
+**Redirect loop deception** (`REDIRECT_CYCLE`): Six trap paths cycle infinite 302 redirects between pairs, wasting scanner threads:
+- `/wp-admin/setup-config.php` ↔ `/wp-admin/install.php`
+- `/setup.php` ↔ `/install.php`
+- `/admin/install` ↔ `/admin/setup`
 
 **Escalating ban tiers** (cumulative offense count persists across restarts via DB):
 
@@ -186,7 +206,9 @@ banIP(ip, reason, path, userAgent, abuseCategories)
 **Behavioral analysis state** (in-memory, reported via `/api/admin/security/blacklist`):
 - `pathTracker` Map — tracks distinct paths per IP in a 2-min window (flags scanners)
 - `fingerprintMap` Map — tracks tool fingerprints (UA+headers) across IPs (flags IP rotation)
-- Both exposed in `getBlacklistStatus()` with progress percentages toward ban thresholds
+- `credentialMap` Map — tracks credential attempts per IP across IPs (flags stuffing attacks)
+- `alerts` Array — up to 100 smart alerts (CREDENTIAL_STUFFING, BAN_EVASION, ADMIN_HONEYPOT, IP_ROTATION)
+- All exposed via dedicated admin API endpoints with dismiss support
 
 **requestLogger** (`requestLogger.ts`):
 - Checks `ADMIN_IPS` env var first (IP-based, no JWT needed)
@@ -297,6 +319,9 @@ App (React Router)
     │   ├── Product/inventory control
     │   ├── Traffic monitoring (user vs admin)
     │   └── Security panel
+    │       ├── Threat alerts (CREDENTIAL_STUFFING, BAN_EVASION, ADMIN_HONEYPOT, IP_ROTATION)
+    │       ├── Attack timeline chart (24h stacked bar: honeypot/rate-limit/blocked/cred-harvest)
+    │       ├── Honeypot heatmap (top 20 trap paths by all-time hit count)
     │       ├── Stats: active bans, permanent, tracked IPs, rate limit
     │       ├── Manual ban / unban
     │       ├── Active bans table (IP, reason, hits, offense#, expires)
@@ -446,9 +471,15 @@ CryptoConverter component (CryptoConverter.tsx)
 | GET /api/admin/stats | Admin | Dashboard statistics |
 | GET /api/admin/traffic/logs | Admin | User traffic logs |
 | GET /api/admin/traffic/admin | Admin | Admin traffic logs |
-| GET /api/admin/security/blacklist | Admin | Banned IPs |
+| GET /api/admin/security/blacklist | Admin | Banned IPs + behavioral data |
 | POST /api/admin/security/ban | Admin | Manually ban IP |
-| GET /api/admin/security/trapped | Admin | Honeypot hits |
+| DELETE /api/admin/security/ban/:ip | Admin | Unban IP |
+| GET /api/admin/security/trapped | Admin | Honeypot hits (last 100) |
+| GET /api/admin/security/alerts | Admin | Smart threat alerts |
+| DELETE /api/admin/security/alerts/:id | Admin | Dismiss single alert |
+| DELETE /api/admin/security/alerts | Admin | Dismiss all alerts |
+| GET /api/admin/security/honeypot-heatmap | Admin | Top 20 trap paths by hit count |
+| GET /api/admin/security/attack-timeline | Admin | 24h attack events grouped by hour |
 
 ## File Serving
 

@@ -83,6 +83,17 @@ const ADMIN_IP_WHITELIST = new Set(
   (process.env.ADMIN_IPS || '').split(',').map(ip => ip.trim()).filter(Boolean)
 );
 
+// ─── REDIRECT LOOP TRAP PATHS ───
+// These paths respond with redirects that cycle between themselves, wasting scanner threads
+const REDIRECT_CYCLE: Record<string, string> = {
+  '/wp-admin/setup-config.php': '/wp-admin/install.php',
+  '/wp-admin/install.php':      '/wp-admin/setup-config.php',
+  '/setup.php':                 '/install.php',
+  '/install.php':               '/setup.php',
+  '/admin/install':             '/admin/setup',
+  '/admin/setup':               '/admin/install',
+};
+
 // ─── IN-MEMORY STATE ───
 // expiresAt: null = permanent ban
 interface BannedIP { bannedAt: number; reason: string; hits: number; expiresAt: number | null; }
@@ -93,6 +104,68 @@ const blacklist    = new Map<string, BannedIP>();
 const offenseCount = new Map<string, number>();   // total times an IP has been banned (persists across restarts)
 const rateLimits   = new Map<string, RateEntry>();
 const authRateLimits = new Map<string, AuthRateEntry>();
+
+// ─── SMART ALERT SYSTEM ───
+export interface ThreatAlert {
+  id: string;
+  timestamp: number;
+  type: 'CREDENTIAL_STUFFING' | 'BAN_EVASION' | 'ADMIN_HONEYPOT' | 'RATE_SPIKE' | 'IP_ROTATION';
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  description: string;
+  ip?: string;
+  data?: Record<string, any>;
+  dismissed: boolean;
+}
+
+const alerts: ThreatAlert[] = [];
+const MAX_ALERTS = 100;
+
+const addAlert = (alert: Omit<ThreatAlert, 'id' | 'timestamp' | 'dismissed'>) => {
+  const newAlert: ThreatAlert = {
+    ...alert,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: Date.now(),
+    dismissed: false,
+  };
+  alerts.unshift(newAlert);
+  if (alerts.length > MAX_ALERTS) alerts.pop();
+  console.log(`[VOID TRAP ALERT] [${newAlert.severity}] ${newAlert.type}: ${newAlert.description}`);
+};
+
+// ─── CREDENTIAL STUFFING DETECTION ───
+// Tracks unique IPs that attempt the same credential set (hashed for privacy)
+const credentialMap = new Map<string, { ips: Set<string>; firstSeen: number; lastSeen: number }>();
+const CRED_WINDOW_MS  = 10 * 60_000; // 10-minute window
+const CRED_MAX_IPS    = 3;           // same creds from 3+ IPs = stuffing
+
+const trackCredentialAttempt = (ip: string, username: string, password: string) => {
+  if (!username && !password) return;
+  // Simple hash: first 8 chars of user + length of pass (don't store actual creds)
+  const credKey = `${username.toLowerCase().substring(0, 12)}:len${password.length}`;
+  const now = Date.now();
+  let entry = credentialMap.get(credKey);
+  if (!entry || now - entry.firstSeen > CRED_WINDOW_MS) {
+    entry = { ips: new Set(), firstSeen: now, lastSeen: now };
+    credentialMap.set(credKey, entry);
+  }
+  entry.ips.add(ip);
+  entry.lastSeen = now;
+  if (entry.ips.size >= CRED_MAX_IPS) {
+    // Only alert once per credential set per window
+    const alertKey = `cred_stuff_${credKey}`;
+    if (!credentialMap.get(alertKey)) {
+      credentialMap.set(alertKey, { ips: new Set(['_alerted']), firstSeen: now, lastSeen: now });
+      addAlert({
+        type: 'CREDENTIAL_STUFFING',
+        severity: 'CRITICAL',
+        description: `Same credentials attempted from ${entry.ips.size} different IPs (key: ${credKey})`,
+        ip,
+        data: { credKey, uniqueIPs: entry.ips.size, ips: [...entry.ips] },
+      });
+    }
+  }
+};
+
 
 const RATE_WINDOW_MS     = 10_000;
 const RATE_MAX_REQUESTS  = 50;
@@ -295,6 +368,7 @@ const getDeceptiveResponse = (
            VALUES (NOW(), 'CRED_HARVEST', $1, 418, 0, $2, $3)`,
           [`wp_login: ${username}`, ip, userAgent.substring(0, 200)]
         ).catch(() => {});
+        trackCredentialAttempt(ip, username, password);
       }
       return {
         contentType: 'text/html',
@@ -683,8 +757,21 @@ export const loadPersistedBans = async (): Promise<void> => {
 export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
   const ip = getIP(req);
 
-  // Admin IPs bypass all checks entirely
-  if (ADMIN_IP_WHITELIST.has(ip)) return next();
+  // Admin IPs bypass all checks entirely — but alert if they hit a honeypot (possible compromise)
+  if (ADMIN_IP_WHITELIST.has(ip)) {
+    const adminPath = req.path.toLowerCase();
+    if (TRAP_PATHS.some(trap => adminPath === trap || adminPath.startsWith(trap + '/'))) {
+      addAlert({
+        type: 'ADMIN_HONEYPOT',
+        severity: 'CRITICAL',
+        description: `ADMIN IP ${ip} hit honeypot path: ${req.path}`,
+        ip,
+        data: { path: req.path, method: req.method, userAgent: (req.headers['user-agent'] || '').toString().substring(0, 100) },
+      });
+      console.log(`[VOID TRAP] ⚠️  ADMIN IP HONEYPOT HIT: ${ip} → ${req.path}`);
+    }
+    return next();
+  }
   const userAgent = (req.headers['user-agent'] || '').toString();
   const path = req.path.toLowerCase();
   const now = Date.now();
@@ -694,6 +781,16 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
   if (ban) {
     ban.hits++;
     db.query(`UPDATE ip_bans SET hits = $1 WHERE ip_address = $2`, [ban.hits, ip]).catch(() => {});
+    // Alert on ban evasion attempts (banned IP keeps hitting with high frequency)
+    if (ban.hits === 50 || ban.hits === 200 || ban.hits % 500 === 0) {
+      addAlert({
+        type: 'BAN_EVASION',
+        severity: ban.expiresAt === null ? 'HIGH' : 'MEDIUM',
+        description: `Banned IP ${ip} has made ${ban.hits} requests since ban (${ban.expiresAt === null ? 'permanent' : 'temporary'} ban)`,
+        ip,
+        data: { hits: ban.hits, reason: ban.reason, permanent: ban.expiresAt === null },
+      });
+    }
     slowDrip(res);
     return;
   }
@@ -725,8 +822,14 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
     rateLimits.set(ip, { count: 1, windowStart: now });
   }
 
-  // 4. AUTH ENDPOINT RATE LIMITING (brute-force protection)
+  // 4. AUTH ENDPOINT RATE LIMITING (brute-force protection) + credential stuffing detection
   if (AUTH_PATHS.some(p => path === p || path.startsWith(p))) {
+    // Track credentials for stuffing detection on login attempts
+    if (path.includes('login') && req.method === 'POST' && req.body) {
+      const u = (req.body.email || req.body.username || '').toString().substring(0, 60);
+      const p2 = (req.body.password || '').toString().substring(0, 60);
+      if (u && p2) trackCredentialAttempt(ip, u, p2);
+    }
     const authEntry = authRateLimits.get(ip);
     if (authEntry) {
       if (now - authEntry.windowStart > AUTH_RATE_WINDOW_MS) {
@@ -779,10 +882,29 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
     }
     fpEntry.ips.add(ip);
     if (fpEntry.ips.size >= FP_MAX_IPS) {
+      addAlert({
+        type: 'IP_ROTATION',
+        severity: 'HIGH',
+        description: `IP rotation detected: same tool fingerprint from ${fpEntry.ips.size} distinct IPs`,
+        ip,
+        data: { ipCount: fpEntry.ips.size, ips: [...fpEntry.ips].slice(0, 10), ua: fp.split('§')[0].substring(0, 80) },
+      });
       banIP(ip, `IP rotation: no accept-language, fingerprint from ${fpEntry.ips.size} IPs`, req.path, userAgent, ABUSE_CATEGORIES.SCANNER_UA);
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
+  }
+
+  // 5a. REDIRECT LOOP DECEPTION — certain paths cycle between each other forever
+  if (path in REDIRECT_CYCLE) {
+    banIP(ip, `Redirect loop trap: ${req.path}`, req.path, userAgent);
+    setTimeout(() => {
+      if (res.headersSent) return;
+      res.setHeader('Location', REDIRECT_CYCLE[path]);
+      res.setHeader('Retry-After', '1');
+      res.status(302).send('');
+    }, 200 + Math.floor(Math.random() * 400));
+    return;
   }
 
   // 5. HONEYPOT - serve deceptive response, ban IP
@@ -795,6 +917,16 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
     const responseDelay = 300 + Math.floor(Math.random() * 900);
     setTimeout(() => {
       if (res.headersSent) return;
+
+      // ─── DECEPTION LAYERING ───
+      // 15% chance: 503 Service Unavailable (makes scanner think server crashed)
+      if (Math.random() < 0.15) {
+        const retryAfter = 30 + Math.floor(Math.random() * 90); // 30-120s
+        res.setHeader('Retry-After', String(retryAfter));
+        res.setHeader('X-Error-ID', Math.random().toString(36).slice(2, 10));
+        return res.status(503).send('Service Temporarily Unavailable');
+      }
+
       if (deceptive) {
         res.status(deceptive.status)
           .setHeader('Content-Type', deceptive.contentType)
@@ -851,6 +983,22 @@ VOID_VENDOR SECURITY SYSTEM v6.6.6
   }
 
   next();
+};
+
+// ─── ADMIN: Alerts ───
+export const getAlerts = (): ThreatAlert[] => alerts.filter(a => !a.dismissed);
+
+export const dismissAlert = (id: string): boolean => {
+  const alert = alerts.find(a => a.id === id);
+  if (!alert) return false;
+  alert.dismissed = true;
+  return true;
+};
+
+export const dismissAllAlerts = (): number => {
+  let count = 0;
+  for (const a of alerts) { if (!a.dismissed) { a.dismissed = true; count++; } }
+  return count;
 };
 
 // ─── ADMIN: Get blacklist status ───

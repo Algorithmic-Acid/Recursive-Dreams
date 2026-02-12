@@ -3,7 +3,7 @@ import { protect, admin } from '../middleware/auth';
 import { db } from '../config/postgres';
 import { ApiResponse } from '../types';
 import { getRequestLogs, getLogStats, clearRequestLogs } from '../middleware/requestLogger';
-import { getBlacklistStatus, manualBan, manualUnban } from '../middleware/voidTrap';
+import { getBlacklistStatus, manualBan, manualUnban, getAlerts, dismissAlert, dismissAllAlerts } from '../middleware/voidTrap';
 
 const router = express.Router();
 
@@ -1082,6 +1082,65 @@ router.get('/security/trapped', async (req: Request, res: Response) => {
     res.json({ success: true, data: result.rows });
   } catch (error: any) {
     res.status(500).json({ success: false, error: 'Failed to fetch trapped requests' });
+  }
+});
+
+// Get smart threat alerts (credential stuffing, ban evasion, admin honeypot, IP rotation)
+router.get('/security/alerts', (req: Request, res: Response) => {
+  res.json({ success: true, data: getAlerts() });
+});
+
+// Dismiss a specific alert
+router.delete('/security/alerts/:id', (req: Request, res: Response) => {
+  const dismissed = dismissAlert(req.params.id);
+  if (dismissed) {
+    res.json({ success: true, message: 'Alert dismissed' });
+  } else {
+    res.status(404).json({ success: false, error: 'Alert not found' });
+  }
+});
+
+// Dismiss all alerts
+router.delete('/security/alerts', (req: Request, res: Response) => {
+  const count = dismissAllAlerts();
+  res.json({ success: true, message: `Dismissed ${count} alerts` });
+});
+
+// Honeypot hit heatmap — top paths that got trapped
+router.get('/security/honeypot-heatmap', async (req: Request, res: Response) => {
+  try {
+    const result = await db.query(`
+      SELECT path, COUNT(*) as hits, MAX(timestamp) as last_hit
+      FROM traffic_logs
+      WHERE method IN ('TRAPPED', 'CRED_HARVEST')
+      GROUP BY path
+      ORDER BY hits DESC
+      LIMIT 20
+    `);
+    res.json({ success: true, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to fetch heatmap data' });
+  }
+});
+
+// Recent attack timeline — attack events in the last 24 hours grouped by hour
+router.get('/security/attack-timeline', async (req: Request, res: Response) => {
+  try {
+    const result = await db.query(`
+      SELECT
+        date_trunc('hour', timestamp) as hour,
+        COUNT(*) FILTER (WHERE method = 'TRAPPED') as honeypot_hits,
+        COUNT(*) FILTER (WHERE status_code = 429) as rate_limit_hits,
+        COUNT(*) FILTER (WHERE status_code = 403) as blocked_requests,
+        COUNT(*) FILTER (WHERE method = 'CRED_HARVEST') as cred_harvests
+      FROM traffic_logs
+      WHERE timestamp > NOW() - INTERVAL '24 hours'
+      GROUP BY hour
+      ORDER BY hour ASC
+    `);
+    res.json({ success: true, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to fetch attack timeline' });
   }
 });
 

@@ -72,6 +72,8 @@ A full-stack e-commerce platform for VST plugins with cyberpunk aesthetics. Feat
 - ✅ Free download management
 - ✅ **Traffic monitoring (separated user/admin)**
 - ✅ **Security monitoring with VoidTrap**
+- ✅ **Real-time threat dashboard** (attack timeline chart, honeypot heatmap)
+- ✅ **Smart threat alerts** (credential stuffing, ban evasion, admin honeypot, IP rotation)
 - ✅ **Behavioral analysis panel** (path scanner monitor, IP rotation detector)
 - ✅ Blacklist management with escalating offense tracking
 - ✅ Honeypot trap detection log
@@ -79,11 +81,14 @@ A full-stack e-commerce platform for VST plugins with cyberpunk aesthetics. Feat
 - ✅ Revenue tracking
 
 ### Security Features
-- ✅ **VoidTrap middleware** - Multi-layer active defense (10 checks per request)
+- ✅ **VoidTrap middleware** - Multi-layer active defense (11 checks per request)
 - ✅ **Honeypot traps** - 50+ paths; catches WordPress/PHP/k8s/git/dependency scanners
 - ✅ **Scanner UA blocking** - 20+ known tools (sqlmap, nikto, nuclei, gobuster...)
 - ✅ **Deceptive responses** - Fake `.env`, WordPress login, phpMyAdmin, Kubernetes API, `.git/config`, `package.json`, GraphQL introspection, XML-RPC, debug config
+- ✅ **Deception layering** - 15% of honeypot hits return `503` to simulate server crash; 6 trap paths issue infinite 302 redirect loops to waste scanner threads
 - ✅ **Credential harvesting** - WP login form captures attacker-submitted credentials
+- ✅ **Credential stuffing detection** - Same credentials from 3+ IPs in 10 min → CRITICAL alert
+- ✅ **Smart threat alerts** - CREDENTIAL_STUFFING, BAN_EVASION, ADMIN_HONEYPOT, IP_ROTATION alerts surfaced in admin dashboard
 - ✅ **Honeypot response delays** - 300–1200ms random delay slows scanner throughput
 - ✅ **Slow-drip tarpit** - Holds banned connections open (1 byte/3s, up to 10min)
 - ✅ **Escalating ban tiers** - offense 1: 30min → 2: 2hr → 3: 24hr → 4: 7 days → 5+: permanent
@@ -95,7 +100,7 @@ A full-stack e-commerce platform for VST plugins with cyberpunk aesthetics. Feat
 - ✅ **IP rotation / fingerprint tracking** - Detects automated tools rotating IPs (missing accept-language + same fingerprint from 8+ IPs)
 - ✅ **POST body injection scanning** - Recursive SQLi/XSS/SSTI/command injection detection
 - ✅ **Traffic separation** - Admin traffic logged separately from user/guest
-- ✅ **Admin IP whitelist** - Bypasses all VoidTrap checks for known admin IPs
+- ✅ **Admin IP whitelist** - Bypasses all VoidTrap checks; alerts on admin IP honeypot hits
 - ✅ **SQL injection protection** - URL and body pattern matching
 - ✅ **XSS prevention** - Headers and body scanning
 - ✅ **Path traversal detection**
@@ -331,20 +336,27 @@ The included `deploy.ps1` script automates deployment:
 - `POST /api/admin/security/ban` - Ban IP address
 - `DELETE /api/admin/security/ban/:ip` - Unban IP address
 - `GET /api/admin/security/trapped` - Honeypot hits
+- `GET /api/admin/security/alerts` - Smart threat alerts
+- `DELETE /api/admin/security/alerts/:id` - Dismiss single alert
+- `DELETE /api/admin/security/alerts` - Dismiss all alerts
+- `GET /api/admin/security/honeypot-heatmap` - Top 20 trap paths by hit count
+- `GET /api/admin/security/attack-timeline` - 24h attack events by hour
 
 ## Security Architecture
 
 ### VoidTrap Middleware (Active Defense)
 
-Requests pass through 10 checks in order:
+Requests pass through 11 checks in order:
 
-1. **Blacklist + Slow-drip tarpit** — Banned IPs get a connection held open (1 byte/3s, up to 10min), draining scanner connection pools
+1. **Blacklist + Slow-drip tarpit** — Banned IPs get a connection held open (1 byte/3s, up to 10min). BAN_EVASION alert fires at 50/200/500 post-ban hits
 2. **Scanner UA blocking** — 20+ known tools (sqlmap, nikto, nuclei, gobuster, etc.) banned on first request
 3. **Global rate limiting** — 50 req/10s per IP; violations trigger ban + iptables DROP rule
 4. **Auth brute-force protection** — 10 login attempts/min; IP banned after 2 violations
-5. **Low-and-slow scanner detection** — Bans IPs that visit >40 distinct paths in 2 minutes (catches slow directory enumeration that stays under rate limits)
-6. **IP rotation / fingerprint detection** — Tracks tool fingerprints (UA + headers); IPs with no `accept-language` header (real browsers always send it) from 8+ distinct IPs are banned
-7. **Honeypot paths** — 50+ trap paths return convincing fake responses with a 300–1200ms delay:
+4b. **Credential stuffing detection** — Same username+password from 3+ IPs in 10 min → CRITICAL CREDENTIAL_STUFFING alert
+5. **Low-and-slow scanner detection** — Bans IPs that visit >40 distinct paths in 2 minutes
+6. **IP rotation / fingerprint detection** — Same tool fingerprint from 8+ IPs → ban + IP_ROTATION alert
+7a. **Redirect loop traps** — 6 paths cycle infinite 302 redirects (e.g. `/wp-admin/setup-config.php` ↔ `/wp-admin/install.php`) to freeze scanner threads
+7b. **Honeypot paths** — 50+ trap paths return convincing fake responses (300–1200ms delay, 15% chance `503`):
    - `/.env` → Fake credentials file (Stripe keys, DB password, JWT secret)
    - `/wp-login.php` → Fake WordPress login (logs any credentials submitted)
    - `/phpmyadmin` → Fake phpMyAdmin interface
@@ -379,11 +391,23 @@ All bans: written to `ip_bans` DB table + iptables DROP rule (survive restarts) 
 - SQL injection: 16 (SQL Injection) + 21
 - Hacking/honeypot: 15 (Hacking) + 21
 
+### Smart Alert System
+
+Four alert types surfaced in Admin → Security tab:
+| Type | Severity | Trigger |
+|------|----------|---------|
+| `CREDENTIAL_STUFFING` | CRITICAL | Same creds from 3+ IPs in 10 min |
+| `ADMIN_HONEYPOT` | CRITICAL | Admin IP hits a honeypot path |
+| `IP_ROTATION` | HIGH | Same fingerprint from 8+ IPs |
+| `BAN_EVASION` | HIGH/MEDIUM | Banned IP makes 50/200/500+ requests |
+
+Alerts are dismissible per-item or all at once from the security dashboard.
+
 ### Traffic Separation
 - Admin IPs → `admin_traffic_logs` table (whitelisted in `ADMIN_IPS` env var)
 - User/guest traffic → `traffic_logs` table
-- VoidTrap completely skips admin IPs (no rate limiting, no honeypot)
-- Both log tables auto-pruned after 3 months
+- VoidTrap skips rate limiting / banning for admin IPs, but still alerts on honeypot hits
+- Both log tables auto-pruned after 90 days (`LOG_RETENTION_DAYS`)
 
 ## SEO Configuration
 
