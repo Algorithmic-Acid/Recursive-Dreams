@@ -62,10 +62,12 @@ Express Middleware Chain (server.ts)
   ├─ 3. VoidTrap middleware (voidTrap.ts)
   │     ├─ Admin IP whitelist bypass (ADMIN_IPS env var)
   │     ├─ Blacklist check → slow-drip tarpit if banned
-  │     ├─ Scanner User-Agent blocking
+  │     ├─ Scanner User-Agent blocking (20+ tools)
   │     ├─ Global rate limit (50 req/10s)
-  │     ├─ Auth endpoint rate limit (10/min)
-  │     ├─ Honeypot path detection
+  │     ├─ Auth endpoint rate limit (10/min, ban after 2 violations)
+  │     ├─ Low-and-slow scanner detection (>40 paths/2min)
+  │     ├─ IP rotation fingerprint detection (no accept-language, 8+ IPs)
+  │     ├─ Honeypot path detection → deceptive response (300–1200ms delay) + ban
   │     ├─ URL pattern scanning (SQLi, path traversal, bad extensions)
   │     ├─ POST body scanning (SQLi, XSS, SSTI, cmd injection)
   │     └─ Oversized payload blocking (5MB)
@@ -120,7 +122,7 @@ backend/src/
 
 ### Middleware Chain Detail
 
-**VoidTrap** (`voidTrap.ts`) — 8 checks in order:
+**VoidTrap** (`voidTrap.ts`) — 10 checks in order:
 
 | # | Check | Action on Trigger |
 |---|-------|-------------------|
@@ -128,35 +130,70 @@ backend/src/
 | 2 | Scanner User-Agent | Instant ban (iptables + DB + AbuseIPDB) |
 | 3 | Global rate limit (50 req/10s) | Instant ban |
 | 4 | Auth brute-force (10/min on login/register) | Ban after 2 violations |
-| 5 | Honeypot path hit | Deceptive response + ban |
-| 6 | URL pattern match (SQLi, traversal, bad ext) | 403 or ban |
-| 7 | POST body injection scan | 403 |
-| 8 | Oversized payload (>5MB) | 413 |
+| 5 | Low-and-slow scanner (>40 distinct paths/2min) | Instant ban |
+| 6 | IP rotation fingerprint (no accept-language, 8+ IPs same fingerprint) | Instant ban |
+| 7 | Honeypot path hit | Deceptive response (300–1200ms delay) + ban |
+| 8 | URL pattern match (SQLi, traversal, bad ext) | 403 or ban |
+| 9 | POST body injection scan | 403 |
+| 10 | Oversized payload (>5MB) | 413 |
 
 **Deceptive honeypot responses by path:**
-- `/.env` → Fake credentials file (Stripe keys, DB password)
-- `/wp-login.php` → Fake WordPress login (harvests submitted credentials)
+- `/.env` → Fake credentials file (Stripe keys, DB password, JWT secret)
+- `/wp-login.php`, `/wp-admin` → Fake WordPress login (harvests submitted credentials)
 - `/phpmyadmin`, `/pma` → Fake phpMyAdmin interface
 - `/api/v1/pods` → Fake Kubernetes API JSON
 - `/actuator/env` → Fake Spring Boot actuator response
+- `/.git/config` → Fake git config with remote URL and author email
+- `/package.json` → Fake package.json with dependency list
+- `/graphql`, `/playground` → Fake GraphQL introspection schema (with tempting `adminConfig` query)
+- `/xmlrpc.php` → Fake XML-RPC response / RSD discovery feed
+- `/wp-includes/wlwmanifest.xml` → Fake Windows Live Writer manifest
+- `/api/debug`, `/debug` → Fake debug config dump with fake credentials
 - All other honeypot paths → Glitch screen with fake error dump
+
+All honeypot responses include a 300–1200ms random delay to slow scanner throughput.
+
+**Escalating ban tiers** (cumulative offense count persists across restarts via DB):
+
+| Offense | Duration |
+|---------|----------|
+| 1st | 30 minutes |
+| 2nd | 2 hours |
+| 3rd | 24 hours |
+| 4th | 7 days |
+| 5th+ | Permanent (`expires_at = NULL` in DB) |
 
 **Ban pipeline** (`banIP()`):
 ```
-banIP(ip, reason, hits)
+banIP(ip, reason, path, userAgent, abuseCategories)
   ├─ Skip: ::1, ::ffff:127.x, private IPs, ADMIN_IPS whitelist
-  ├─ blacklist.set(ip, expiry)         — in-memory fast check
-  ├─ db INSERT INTO ip_bans            — persist across restarts
+  ├─ offenseCount.get(ip) + 1          — cumulative offense tracking
+  ├─ getBanTier(offenses)              — escalate duration
+  ├─ blacklist.set(ip, expiresAt)      — in-memory fast check
+  ├─ db UPSERT ip_bans                 — persist across restarts
   ├─ sudo /usr/local/bin/voidtrap ban  — iptables DROP rule at kernel level
   ├─ INSERT INTO traffic_logs          — record the event
-  └─ POST api.abuseipdb.com/report     — report to global abuse DB
+  └─ POST api.abuseipdb.com/report     — report with category-specific codes
 ```
+
+**AbuseIPDB category codes:**
+- Scanner UA: `14,19,21` (Port Scan + Bad Web Bot + Web App Attack)
+- Rate limit: `4,21` (DDoS + Web App Attack)
+- Brute force: `18,21` (Brute-Force + Web App Attack)
+- SQL injection: `16,21` (SQL Injection + Web App Attack)
+- Hacking/honeypot: `15,21` (Hacking + Web App Attack)
+
+**Behavioral analysis state** (in-memory, reported via `/api/admin/security/blacklist`):
+- `pathTracker` Map — tracks distinct paths per IP in a 2-min window (flags scanners)
+- `fingerprintMap` Map — tracks tool fingerprints (UA+headers) across IPs (flags IP rotation)
+- Both exposed in `getBlacklistStatus()` with progress percentages toward ban thresholds
 
 **requestLogger** (`requestLogger.ts`):
 - Checks `ADMIN_IPS` env var first (IP-based, no JWT needed)
 - Falls back to JWT decode for admin role detection
 - Admin traffic → `admin_traffic_logs` table
 - User/guest traffic → `traffic_logs` table
+- `startTrafficLogCleanup()` — runs daily, prunes both tables after 3 months
 
 ## Frontend Architecture
 
@@ -259,7 +296,14 @@ App (React Router)
     │   ├── Order management
     │   ├── Product/inventory control
     │   ├── Traffic monitoring (user vs admin)
-    │   └── Security panel (bans, honeypot hits, blacklist)
+    │   └── Security panel
+    │       ├── Stats: active bans, permanent, tracked IPs, rate limit
+    │       ├── Manual ban / unban
+    │       ├── Active bans table (IP, reason, hits, offense#, expires)
+    │       ├── Honeypot trap log (last 50 hits)
+    │       └── Behavioral analysis panel
+    │           ├── Path scanner monitor (IPs near 40-path threshold)
+    │           └── IP rotation detector (fingerprints from multiple IPs)
     └── /about → About
 ```
 
@@ -324,9 +368,9 @@ ip_bans (
   id SERIAL PK,
   ip_address VARCHAR(50) UNIQUE,
   reason TEXT,
-  hits INT,
+  hits INT,                       -- cumulative offense count (seeds offenseCount on restart)
   banned_at TIMESTAMPTZ,
-  expires_at TIMESTAMPTZ
+  expires_at TIMESTAMPTZ          -- NULL = permanent ban; rows kept 90 days after expiry
 )
 ```
 
