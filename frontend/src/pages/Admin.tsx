@@ -1958,12 +1958,117 @@ export const Admin = () => {
               )}
             </div>
 
+            {/* Behavioral Analysis */}
+            <div className="bg-dark-card border border-purple-500/20 rounded-lg p-3 sm:p-6">
+              <h3 className="text-sm sm:text-lg font-bold text-purple-400 mb-3 sm:mb-4 font-mono">BEHAVIORAL_ANALYSIS</h3>
+
+              {/* Behavioral stats row */}
+              {blacklistData?.behavioral && (
+                <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
+                  <div className="bg-dark-bg border border-yellow-500/20 rounded-lg p-2 sm:p-3 text-center">
+                    <div className="text-white/50 font-mono text-[9px] sm:text-xs mb-1">PATH_TRACKERS</div>
+                    <div className="text-base sm:text-xl font-bold text-yellow-400">{blacklistData.behavioral.pathTrackerTotal}</div>
+                    <div className="text-white/30 font-mono text-[8px]">thresh: {blacklistData.behavioral.pathScanThreshold}</div>
+                  </div>
+                  <div className="bg-dark-bg border border-pink-500/20 rounded-lg p-2 sm:p-3 text-center">
+                    <div className="text-white/50 font-mono text-[9px] sm:text-xs mb-1">FINGERPRINTS</div>
+                    <div className="text-base sm:text-xl font-bold text-pink-400">{blacklistData.behavioral.fingerprintTotal}</div>
+                    <div className="text-white/30 font-mono text-[8px]">thresh: {blacklistData.behavioral.fingerprintThreshold} IPs</div>
+                  </div>
+                  <div className="bg-dark-bg border border-red-500/20 rounded-lg p-2 sm:p-3 text-center">
+                    <div className="text-white/50 font-mono text-[9px] sm:text-xs mb-1">SUSPICIOUS_FP</div>
+                    <div className="text-base sm:text-xl font-bold text-red-400">{blacklistData.behavioral.suspiciousFingerprints.length}</div>
+                    <div className="text-white/30 font-mono text-[8px]">multi-IP tools</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Path scanner monitor */}
+              {blacklistData?.behavioral?.scannerCandidates?.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-[10px] sm:text-xs font-mono text-yellow-400 mb-2 uppercase tracking-wider">Path Scanner Monitor — IPs approaching ban threshold</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[300px]">
+                      <thead>
+                        <tr className="border-b border-yellow-500/20">
+                          <th className="px-2 sm:px-3 py-1.5 text-left text-yellow-400/70 font-mono text-[9px] sm:text-xs">IP</th>
+                          <th className="px-2 sm:px-3 py-1.5 text-left text-yellow-400/70 font-mono text-[9px] sm:text-xs">PATHS / LIMIT</th>
+                          <th className="px-2 sm:px-3 py-1.5 text-left text-yellow-400/70 font-mono text-[9px] sm:text-xs hidden sm:table-cell">PROGRESS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {blacklistData.behavioral.scannerCandidates.map((s: any, i: number) => (
+                          <tr key={i} className="border-b border-white/5 hover:bg-yellow-500/5">
+                            <td className="px-2 sm:px-3 py-1.5 text-yellow-300 font-mono text-[9px] sm:text-xs">{s.ip}</td>
+                            <td className="px-2 sm:px-3 py-1.5 font-mono text-[9px] sm:text-xs">
+                              <span className={s.pct >= 75 ? 'text-red-400 font-bold' : 'text-orange-400'}>
+                                {s.distinctPaths} / {blacklistData.behavioral.pathScanThreshold}
+                              </span>
+                            </td>
+                            <td className="px-2 sm:px-3 py-1.5 hidden sm:table-cell">
+                              <div className="flex gap-0.5">
+                                {[20, 40, 60, 80, 100].map(t => (
+                                  <div key={t} className={`w-3 h-2 rounded-sm ${s.pct >= t ? (s.pct >= 80 ? 'bg-red-500' : s.pct >= 60 ? 'bg-orange-500' : 'bg-yellow-500') : 'bg-white/10'}`} />
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Fingerprint / IP-rotation monitor */}
+              {blacklistData?.behavioral?.suspiciousFingerprints?.length > 0 ? (
+                <div>
+                  <h4 className="text-[10px] sm:text-xs font-mono text-pink-400 mb-2 uppercase tracking-wider">IP Rotation Detector — Same tool, multiple IPs (no accept-language)</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[300px]">
+                      <thead>
+                        <tr className="border-b border-pink-500/20">
+                          <th className="px-2 sm:px-3 py-1.5 text-left text-pink-400/70 font-mono text-[9px] sm:text-xs">USER_AGENT</th>
+                          <th className="px-2 sm:px-3 py-1.5 text-left text-pink-400/70 font-mono text-[9px] sm:text-xs">IPs / LIMIT</th>
+                          <th className="px-2 sm:px-3 py-1.5 text-left text-pink-400/70 font-mono text-[9px] sm:text-xs hidden sm:table-cell">PROGRESS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {blacklistData.behavioral.suspiciousFingerprints.map((fp: any, i: number) => (
+                          <tr key={i} className="border-b border-white/5 hover:bg-pink-500/5">
+                            <td className="px-2 sm:px-3 py-1.5 text-white/70 font-mono text-[9px] sm:text-xs truncate max-w-[180px] sm:max-w-xs">{fp.ua}</td>
+                            <td className="px-2 sm:px-3 py-1.5 font-mono text-[9px] sm:text-xs">
+                              <span className={fp.pct >= 100 ? 'text-red-400 font-bold' : fp.pct >= 50 ? 'text-pink-400' : 'text-white/50'}>
+                                {fp.ipCount} / {blacklistData.behavioral.fingerprintThreshold}
+                              </span>
+                            </td>
+                            <td className="px-2 sm:px-3 py-1.5 hidden sm:table-cell">
+                              <div className="flex gap-0.5">
+                                {[20, 40, 60, 80, 100].map(t => (
+                                  <div key={t} className={`w-3 h-2 rounded-sm ${fp.pct >= t ? (fp.pct >= 100 ? 'bg-red-500' : fp.pct >= 60 ? 'bg-pink-500' : 'bg-purple-500') : 'bg-white/10'}`} />
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                blacklistData?.behavioral?.scannerCandidates?.length === 0 && (
+                  <p className="text-white/30 font-mono text-xs">No suspicious behavioral patterns detected in current window</p>
+                )
+              )}
+            </div>
+
             {/* Info */}
             <div className="bg-dark-card border border-cyan-500/20 rounded-lg p-3 sm:p-4">
               <p className="text-white/50 text-xs sm:text-sm font-mono">
                 <span className="text-cyan-400">VOID_TRAP:</span> Honeypot paths (/wp-login.php, /.env, /phpmyadmin, etc.)
-                auto-ban scanners for 30 minutes. Rate limit: 50 requests per 10 seconds per IP.
-                Banned IPs get tarpitted (connections held open to waste attacker resources).
+                auto-ban scanners. Escalating bans: offense 1=30min, 2=2hr, 3=24hr, 4=7days, 5+=permanent.
+                Banned IPs get tarpitted (1 byte/3s, up to 10min). Path scanner bans at {'>'}40 distinct paths/2min.
+                IP rotation bans at same fingerprint from 8+ IPs.
               </p>
             </div>
           </div>

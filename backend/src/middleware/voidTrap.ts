@@ -648,13 +648,20 @@ export const loadPersistedBans = async (): Promise<void> => {
     // Only delete expired non-permanent bans older than 90 days (keep history for offense count)
     await db.query(`DELETE FROM ip_bans WHERE expires_at IS NOT NULL AND expires_at < NOW() - INTERVAL '90 days'`);
 
-    // Load active bans (not yet expired) AND permanent bans (expires_at IS NULL)
-    const result = await db.query(
+    // Seed offenseCount from ALL remaining rows (including expired bans within 90-day window)
+    // This ensures trackedIPs reflects total unique IPs ever caught, not just active bans.
+    const allRows = await db.query(`SELECT ip_address, hits FROM ip_bans`);
+    for (const row of allRows.rows) {
+      offenseCount.set(row.ip_address, row.hits);
+    }
+
+    // Load only active + permanent bans into blacklist + re-apply iptables
+    const activeResult = await db.query(
       `SELECT ip_address, reason, hits, banned_at, expires_at FROM ip_bans
        WHERE expires_at > NOW() OR expires_at IS NULL`
     );
 
-    for (const row of result.rows) {
+    for (const row of activeResult.rows) {
       const expiresAt = row.expires_at ? new Date(row.expires_at).getTime() : null;
       blacklist.set(row.ip_address, {
         bannedAt: new Date(row.banned_at).getTime(),
@@ -662,15 +669,11 @@ export const loadPersistedBans = async (): Promise<void> => {
         hits: row.hits,
         expiresAt,
       });
-      // Seed offense count from DB hits so escalation persists across restarts
-      offenseCount.set(row.ip_address, row.hits);
       banWithIptables(row.ip_address);
     }
 
-    const permanent = result.rows.filter(r => r.expires_at === null).length;
-    if (result.rowCount && result.rowCount > 0) {
-      console.log(`🛡️ Loaded ${result.rowCount} persisted IP bans (${permanent} permanent) — iptables rules re-applied`);
-    }
+    const permanent = activeResult.rows.filter(r => r.expires_at === null).length;
+    console.log(`🛡️ VoidTrap: ${allRows.rowCount ?? 0} tracked IPs | ${activeResult.rowCount ?? 0} active bans (${permanent} permanent)`);
   } catch (err: any) {
     console.error('Failed to load persisted bans:', err.message);
   }
@@ -865,17 +868,53 @@ export const getBlacklistStatus = () => {
       offenses: offenseCount.get(ip) ?? 1,
     });
   }
+
+  // ─── Behavioral: path scanner candidates ───
+  const scannerCandidates: Array<{ ip: string; distinctPaths: number; pct: number }> = [];
+  for (const [ip, entry] of pathTracker) {
+    if (entry.paths.size >= 5) {
+      scannerCandidates.push({
+        ip,
+        distinctPaths: entry.paths.size,
+        pct: Math.round((entry.paths.size / PATH_SCAN_MAX_DISTINCT) * 100),
+      });
+    }
+  }
+  scannerCandidates.sort((a, b) => b.distinctPaths - a.distinctPaths);
+
+  // ─── Behavioral: fingerprint / IP-rotation suspects ───
+  const suspiciousFingerprints: Array<{ ua: string; ipCount: number; pct: number }> = [];
+  for (const [fp, entry] of fingerprintMap) {
+    if (entry.ips.size >= 2) {
+      const ua = fp.split('§')[0].substring(0, 80) || '(no user-agent)';
+      suspiciousFingerprints.push({
+        ua,
+        ipCount: entry.ips.size,
+        pct: Math.round((entry.ips.size / FP_MAX_IPS) * 100),
+      });
+    }
+  }
+  suspiciousFingerprints.sort((a, b) => b.ipCount - a.ipCount);
+
   const tierSummary = BAN_TIERS.map(t => `offense ${t.maxOffense}: ${t.label}`).join(', ') + ', offense 5+: permanent';
   return {
     totalBanned: entries.length,
     permanent: entries.filter(e => e.expiresIn === 'permanent').length,
-    trackedIPs: offenseCount.size,   // unique IPs ever caught (persists across restarts via DB)
+    trackedIPs: offenseCount.size,
     activeTarpits: activeTarpitCount,
     banDuration: 'escalating (5 tiers)',
     escalationTiers: tierSummary,
     rateLimit: `${RATE_MAX_REQUESTS} req/${RATE_WINDOW_MS / 1000}s`,
     authRateLimit: `${AUTH_MAX_REQUESTS} auth req/min, ban after ${AUTH_BAN_VIOLATIONS} violations`,
     entries,
+    behavioral: {
+      pathTrackerTotal: pathTracker.size,
+      pathScanThreshold: PATH_SCAN_MAX_DISTINCT,
+      scannerCandidates: scannerCandidates.slice(0, 25),
+      fingerprintTotal: fingerprintMap.size,
+      fingerprintThreshold: FP_MAX_IPS,
+      suspiciousFingerprints: suspiciousFingerprints.slice(0, 25),
+    },
   };
 };
 
