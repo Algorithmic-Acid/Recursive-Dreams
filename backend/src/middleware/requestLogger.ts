@@ -12,12 +12,11 @@ const ADMIN_IP_WHITELIST = new Set(
 // Cleanup old traffic logs (older than 3 months)
 export const cleanupOldTrafficLogs = async (): Promise<number> => {
   try {
-    const result = await db.query(
-      `DELETE FROM traffic_logs WHERE timestamp < NOW() - INTERVAL '3 months' RETURNING id`
-    );
-    const deletedCount = result.rowCount || 0;
+    const r1 = await db.query(`DELETE FROM traffic_logs       WHERE timestamp < NOW() - INTERVAL '3 months' RETURNING id`);
+    const r2 = await db.query(`DELETE FROM admin_traffic_logs WHERE timestamp < NOW() - INTERVAL '3 months' RETURNING id`);
+    const deletedCount = (r1.rowCount || 0) + (r2.rowCount || 0);
     if (deletedCount > 0) {
-      console.log(`🧹 Cleaned up ${deletedCount} traffic logs older than 3 months`);
+      console.log(`🧹 Cleaned up ${deletedCount} traffic log entries older than 3 months`);
     }
     return deletedCount;
   } catch (err: any) {

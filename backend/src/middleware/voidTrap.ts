@@ -29,6 +29,12 @@ const TRAP_PATHS = [
   '/console', '/debug', '/trace',
   '/swagger', '/swagger-ui', '/api-docs',
   '/graphql', '/playground',
+  // File/dependency exposure
+  '/package.json', '/package-lock.json', '/composer.json', '/yarn.lock',
+  // Debug/config endpoints not covered by prefix matches
+  '/api/debug',
+  // Explicit WordPress targets (covered by prefix but listed for clarity)
+  '/wp-includes/wlwmanifest.xml', '/xmlrpc.php',
 ];
 
 // ─── SUSPICIOUS URL PATTERNS ───
@@ -95,6 +101,18 @@ const AUTH_MAX_REQUESTS    = 10;
 const AUTH_BAN_VIOLATIONS  = 2;
 const AUTH_PATHS = ['/api/auth/login', '/api/auth/register'];
 
+// ─── BEHAVIORAL ANALYSIS STATE ───
+// Low-and-slow scanner detection: track distinct paths per IP
+interface PathTracker { paths: Set<string>; windowStart: number; }
+const pathTracker = new Map<string, PathTracker>();
+const PATH_SCAN_WINDOW_MS    = 2 * 60_000; // 2-minute window
+const PATH_SCAN_MAX_DISTINCT = 40;         // >40 distinct paths in window = scanner
+
+// Fingerprint tracking: same tool fingerprint from many IPs = IP rotation
+const fingerprintMap = new Map<string, { ips: Set<string>; firstSeen: number }>();
+const FP_WINDOW_MS = 5 * 60_000; // 5-minute window
+const FP_MAX_IPS   = 8;          // same fingerprint from 8+ distinct IPs
+
 // ─── ESCALATING BAN TIERS ───
 // Offense count is cumulative and persists across server restarts (loaded from DB hits column).
 // null duration = permanent ban (iptables DROP rule + no expiry in DB).
@@ -122,6 +140,10 @@ setInterval(() => {
     if (now - entry.windowStart > RATE_WINDOW_MS * 2) rateLimits.delete(ip);
   for (const [ip, entry] of authRateLimits)
     if (now - entry.windowStart > AUTH_RATE_WINDOW_MS * 5) authRateLimits.delete(ip);
+  for (const [fp, entry] of fingerprintMap)
+    if (now - entry.firstSeen > FP_WINDOW_MS * 2) fingerprintMap.delete(fp);
+  for (const [ip, entry] of pathTracker)
+    if (now - entry.windowStart > PATH_SCAN_WINDOW_MS * 5) pathTracker.delete(ip);
 }, 5 * 60_000);
 
 // ─── IP EXTRACTION ───
@@ -133,6 +155,16 @@ const getIP = (req: Request): string => {
   const fwd = req.headers['x-forwarded-for'] as string;
   if (fwd) return fwd.split(',')[0].trim();
   return req.ip || req.socket?.remoteAddress || 'unknown';
+};
+
+// ─── REQUEST FINGERPRINTING ───
+// Builds a fingerprint from headers that automated tools often leave distinctive or empty.
+// Missing accept-language is the strongest signal — all real browsers always send it.
+const getFingerprint = (req: Request): string => {
+  const ua   = (req.headers['user-agent']      || '').toString().substring(0, 100);
+  const lang = (req.headers['accept-language'] || '').toString().substring(0, 20);
+  const enc  = (req.headers['accept-encoding'] || '').toString().substring(0, 20);
+  return `${ua}§${lang}§${enc}`;
 };
 
 // ─── RECURSIVE BODY SCANNER ───
@@ -214,7 +246,8 @@ const getDeceptiveResponse = (
   method: string,
   body: any,
   ip: string,
-  userAgent: string
+  userAgent: string,
+  query: Record<string, any> = {}
 ): { contentType: string; status: number; content: string } | null => {
   const p = path.toLowerCase();
 
@@ -375,6 +408,131 @@ input[type=submit]{background:#4e6d8c;color:#fff;border:none;cursor:pointer}
             'server.port': { value: '5001' },
           },
         }],
+      }, null, 2),
+    };
+  }
+
+  // Fake XML-RPC response (also handles ?rsd discovery requests)
+  if (p === '/xmlrpc.php') {
+    if ('rsd' in query) {
+      return {
+        contentType: 'application/rsd+xml',
+        status: 200,
+        content: `<?xml version="1.0" encoding="UTF-8"?><rsd version="1.0" xmlns="http://archipelago.phrasewise.com/rsd"><service><engineName>WordPress</engineName><engineLink>https://wordpress.org/</engineLink><homePageLink>https://voidvendor.com</homePageLink><apis><api name="WordPress" blogID="1" preferred="true" apiLink="https://voidvendor.com/xmlrpc.php" /></apis></service></rsd>`,
+      };
+    }
+    return {
+      contentType: 'text/xml',
+      status: 200,
+      content: `<?xml version="1.0" encoding="UTF-8"?><methodResponse><params><param><value><string>XML-RPC server accepts POST requests only.</string></value></param></params></methodResponse>`,
+    };
+  }
+
+  // Fake WP Live Writer manifest
+  if (p.includes('wlwmanifest.xml')) {
+    return {
+      contentType: 'text/xml',
+      status: 200,
+      content: `<?xml version="1.0" encoding="UTF-8"?><manifest xmlns="http://schemas.microsoft.com/wlw/manifest/weblog"><options><clientType>WordPress</clientType><supportsKeywords>Yes</supportsKeywords><supportsGetTags>Yes</supportsGetTags></options><weblog><serviceName>WordPress</serviceName><imageEndpoint>https://voidvendor.com/xmlrpc.php</imageEndpoint></weblog></manifest>`,
+    };
+  }
+
+  // Fake .git/config
+  if (p === '/.git/config') {
+    return {
+      contentType: 'text/plain',
+      status: 200,
+      content: [
+        '[core]',
+        '\trepositoryformatversion = 0',
+        '\tfilemode = true',
+        '\tbare = false',
+        '\tlogallrefupdates = true',
+        '[remote "origin"]',
+        '\turl = git@github.com:voidvendor/voidvendor-api.git',
+        '\tfetch = +refs/heads/*:refs/remotes/origin/*',
+        '[branch "main"]',
+        '\tremote = origin',
+        '\tmerge = refs/heads/main',
+        '[user]',
+        '\tname = Wes Thornton',
+        '\temail = wes@voidvendor.com',
+      ].join('\n'),
+    };
+  }
+
+  // Fake package.json
+  if (p === '/package.json') {
+    return {
+      contentType: 'application/json',
+      status: 200,
+      content: JSON.stringify({
+        name: 'voidvendor-api',
+        version: '2.1.0',
+        private: true,
+        scripts: { start: 'node dist/server.js', dev: 'ts-node src/server.ts', build: 'tsc' },
+        dependencies: {
+          express: '^4.18.2', pg: '^8.11.0', bcryptjs: '^2.4.3',
+          jsonwebtoken: '^9.0.0', stripe: '^13.0.0', multer: '^1.4.5-lts.1', dotenv: '^16.0.3',
+        },
+        devDependencies: {
+          typescript: '^5.0.0', '@types/express': '^4.17.17', '@types/node': '^18.0.0',
+        },
+      }, null, 2),
+    };
+  }
+
+  // Fake GraphQL introspection
+  if (p === '/graphql' || p === '/playground') {
+    return {
+      contentType: 'application/json',
+      status: 200,
+      content: JSON.stringify({
+        data: {
+          __schema: {
+            queryType: { name: 'Query' },
+            types: [
+              {
+                name: 'Query', kind: 'OBJECT',
+                fields: [
+                  { name: 'users', type: { name: 'UserList', kind: 'OBJECT' } },
+                  { name: 'orders', type: { name: 'OrderList', kind: 'OBJECT' } },
+                  {
+                    name: 'adminConfig', type: { name: 'AdminConfig', kind: 'OBJECT' },
+                    description: 'Returns admin configuration and API keys (requires ADMIN role)',
+                  },
+                ],
+              },
+              {
+                name: 'AdminConfig', kind: 'OBJECT',
+                fields: [
+                  { name: 'stripeKey',  type: { name: 'String', kind: 'SCALAR' } },
+                  { name: 'jwtSecret',  type: { name: 'String', kind: 'SCALAR' } },
+                  { name: 'dbUrl',      type: { name: 'String', kind: 'SCALAR' } },
+                ],
+              },
+            ],
+          },
+        },
+      }, null, 2),
+    };
+  }
+
+  // Fake debug config endpoint
+  if (p.startsWith('/api/debug') || p === '/debug' || p.startsWith('/debug/')) {
+    return {
+      contentType: 'application/json',
+      status: 200,
+      content: JSON.stringify({
+        environment: 'production',
+        version: '2.1.0',
+        node: process.version,
+        database: { host: '127.0.0.1', port: 5432, name: 'voidvendor_prod', user: 'dbadmin' },
+        config: {
+          jwt_secret: '9f8a3e2b1c4d7e6f5a0b9c8d7e6f5a4b3c2d1e0f',
+          stripe_secret: ['sk', 'live', '51NqPmK2Ld9wXtR8cVp7aE4bF0jY6nM'].join('_'),
+          admin_email: 'admin@voidvendor.com',
+        },
       }, null, 2),
     };
   }
@@ -588,19 +746,59 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
     }
   }
 
+  // 4b. LOW-AND-SLOW SCANNER DETECTION
+  // Flags IPs that visit too many distinct paths in a short window (path enumeration / directory brute-forcing)
+  const ptEntry = pathTracker.get(ip);
+  if (ptEntry) {
+    if (now - ptEntry.windowStart > PATH_SCAN_WINDOW_MS) {
+      ptEntry.paths.clear();
+      ptEntry.windowStart = now;
+    }
+    ptEntry.paths.add(path);
+    if (ptEntry.paths.size > PATH_SCAN_MAX_DISTINCT) {
+      banIP(ip, `Sequential scanner: ${ptEntry.paths.size} distinct paths in 2 min`, req.path, userAgent, ABUSE_CATEGORIES.SCANNER_UA);
+      res.status(429).json({ error: 'Too many requests' });
+      return;
+    }
+  } else {
+    pathTracker.set(ip, { paths: new Set([path]), windowStart: now });
+  }
+
+  // 4c. FINGERPRINT / IP-ROTATION DETECTION
+  // Missing accept-language is a reliable automation indicator — all real browsers always send it.
+  // If the same fingerprint appears from many different IPs it indicates IP-rotating tools.
+  if (!req.headers['accept-language']) {
+    const fp = getFingerprint(req);
+    let fpEntry = fingerprintMap.get(fp);
+    if (!fpEntry || now - fpEntry.firstSeen > FP_WINDOW_MS) {
+      fpEntry = { ips: new Set(), firstSeen: now };
+      fingerprintMap.set(fp, fpEntry);
+    }
+    fpEntry.ips.add(ip);
+    if (fpEntry.ips.size >= FP_MAX_IPS) {
+      banIP(ip, `IP rotation: no accept-language, fingerprint from ${fpEntry.ips.size} IPs`, req.path, userAgent, ABUSE_CATEGORIES.SCANNER_UA);
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+  }
+
   // 5. HONEYPOT - serve deceptive response, ban IP
   if (TRAP_PATHS.some(trap => path === trap || path.startsWith(trap + '/'))) {
     // Check for deceptive response first (may log credentials before banning)
-    const deceptive = getDeceptiveResponse(req.path, req.method, req.body, ip, userAgent);
+    const deceptive = getDeceptiveResponse(req.path, req.method, req.body, ip, userAgent, req.query as Record<string, any>);
     banIP(ip, `Honeypot: ${req.path}`, req.path, userAgent);
 
-    if (deceptive) {
-      res.status(deceptive.status)
-        .setHeader('Content-Type', deceptive.contentType)
-        .send(deceptive.content);
-    } else {
-      // Default glitch screen
-      res.status(200).send(`<pre>
+    // Delay response 300-1200ms — slows scanner throughput and mimics real server processing time
+    const responseDelay = 300 + Math.floor(Math.random() * 900);
+    setTimeout(() => {
+      if (res.headersSent) return;
+      if (deceptive) {
+        res.status(deceptive.status)
+          .setHeader('Content-Type', deceptive.contentType)
+          .send(deceptive.content);
+      } else {
+        // Default glitch screen
+        res.status(200).send(`<pre>
 VOID_VENDOR SECURITY SYSTEM v6.6.6
 ===================================
 > INTRUSION DETECTED
@@ -612,7 +810,8 @@ VOID_VENDOR SECURITY SYSTEM v6.6.6
 > CORE DUMP: 0x${Math.random().toString(16).slice(2, 10)}
 > SEGFAULT AT ADDRESS 0x${Math.random().toString(16).slice(2, 10)}
 </pre>`);
-    }
+      }
+    }, responseDelay);
     return;
   }
 
