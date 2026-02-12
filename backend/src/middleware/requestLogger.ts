@@ -9,14 +9,44 @@ const ADMIN_IP_WHITELIST = new Set(
   (process.env.ADMIN_IPS || '').split(',').map(ip => ip.trim()).filter(Boolean)
 );
 
-// Cleanup old traffic logs (older than 3 months)
+// Log retention period in days (default 90 days / ~3 months)
+// Override with LOG_RETENTION_DAYS env var
+const LOG_RETENTION_DAYS = parseInt(process.env.LOG_RETENTION_DAYS || '90', 10);
+
+// Anonymize IP for GDPR-friendly traffic log storage.
+// Zeros out the last octet of IPv4 (192.168.1.123 → 192.168.1.0).
+// Keeps only the first 3 groups of IPv6.
+// ip_bans and admin_traffic_logs keep full IPs for security/audit purposes.
+const anonymizeIP = (ip: string): string => {
+  // IPv4 - zero last octet
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
+    return ip.replace(/\.\d+$/, '.0');
+  }
+  // IPv4-mapped IPv6 (::ffff:a.b.c.d)
+  const mapped = ip.match(/^(::ffff:)(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d+$/i);
+  if (mapped) return `${mapped[1]}${mapped[2]}.0`;
+  // IPv6 - keep first 3 groups
+  if (ip.includes(':')) {
+    const parts = ip.split(':');
+    if (parts.length >= 3) return `${parts[0]}:${parts[1]}:${parts[2]}::`;
+  }
+  return ip; // loopback (::1), 'unknown', etc.
+};
+
+// Cleanup old traffic logs (older than LOG_RETENTION_DAYS)
 export const cleanupOldTrafficLogs = async (): Promise<number> => {
   try {
-    const r1 = await db.query(`DELETE FROM traffic_logs       WHERE timestamp < NOW() - INTERVAL '3 months' RETURNING id`);
-    const r2 = await db.query(`DELETE FROM admin_traffic_logs WHERE timestamp < NOW() - INTERVAL '3 months' RETURNING id`);
+    const r1 = await db.query(
+      `DELETE FROM traffic_logs       WHERE timestamp < NOW() - ($1 * INTERVAL '1 day') RETURNING id`,
+      [LOG_RETENTION_DAYS]
+    );
+    const r2 = await db.query(
+      `DELETE FROM admin_traffic_logs WHERE timestamp < NOW() - ($1 * INTERVAL '1 day') RETURNING id`,
+      [LOG_RETENTION_DAYS]
+    );
     const deletedCount = (r1.rowCount || 0) + (r2.rowCount || 0);
     if (deletedCount > 0) {
-      console.log(`🧹 Cleaned up ${deletedCount} traffic log entries older than 3 months`);
+      console.log(`🧹 Cleaned up ${deletedCount} traffic log entries older than ${LOG_RETENTION_DAYS} days`);
     }
     return deletedCount;
   } catch (err: any) {
@@ -36,7 +66,7 @@ export const startTrafficLogCleanup = () => {
     cleanupOldTrafficLogs();
   }, 24 * 60 * 60 * 1000);
 
-  console.log('📅 Traffic log cleanup scheduled (every 24 hours, keeping 3 months)');
+  console.log(`📅 Traffic log cleanup scheduled (every 24h, retaining ${LOG_RETENTION_DAYS} days)`);
 };
 
 export const stopTrafficLogCleanup = () => {
@@ -232,7 +262,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
           console.error('Admin traffic log DB insert failed:', err.message);
         });
       } else {
-        // Log regular user/guest traffic
+        // Log regular user/guest traffic — store anonymized IP (GDPR privacy-by-design)
         db.query(
           `INSERT INTO traffic_logs (timestamp, method, path, status_code, response_time, ip_address, user_agent, user_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -242,7 +272,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
             log.path,
             log.statusCode,
             log.responseTime,
-            log.ip,
+            anonymizeIP(log.ip),
             log.userAgent,
             log.userId || null
           ]

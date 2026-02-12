@@ -410,6 +410,24 @@ All bans: written to `ip_bans` DB table + iptables DROP rule (survive restarts) 
    - Rocket Loader
 6. Create page rules for static asset caching
 
+## Legal & Compliance
+
+See [LEGAL.md](LEGAL.md) for full details. Summary:
+
+### Data Retention
+- Traffic logs auto-purged after **90 days** (configurable via `LOG_RETENTION_DAYS` env var)
+- Security ban records retained permanently for repeat/serious offenders (required for iptables enforcement and legal evidence)
+
+### IP Anonymization (GDPR Privacy-by-Design)
+- **`traffic_logs`**: Last IPv4 octet zeroed before storage (`192.168.1.123` → `192.168.1.0`). Individual visitors are not identifiable.
+- **`ip_bans` / `admin_traffic_logs`**: Full IPs retained — required for active defense and audit trail.
+
+### Active Defense Posture
+All VoidTrap measures are purely defensive — reactive to traffic that reaches our own servers. No offensive operations against external infrastructure. Honeypots on your own servers are lawful in the US and EU. Full legal rationale in [LEGAL.md](LEGAL.md).
+
+### AbuseIPDB Reporting
+Good-faith reporting under AbuseIPDB ToS. Reports include only IPs that demonstrated hostile behavior against our infrastructure.
+
 ## Contributing
 
 Pull requests are welcome! For major changes, please open an issue first.
