@@ -20,7 +20,7 @@ export const Terms = () => {
           <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 bg-clip-text text-transparent mb-4">
             TERMS OF SERVICE
           </h1>
-          <p className="text-white/70 font-mono">[ LAST_UPDATED: JANUARY_2026 ]</p>
+          <p className="text-white/70 font-mono">[ LAST_UPDATED: FEBRUARY_2026 ]</p>
         </div>
 
         {/* Content */}
@@ -46,7 +46,31 @@ export const Terms = () => {
                   <li>Attempt to gain unauthorized access to our systems</li>
                   <li>Interfere with the proper functioning of the website</li>
                   <li>Use automated systems to access our services without permission</li>
+                  <li>Conduct vulnerability scanning, penetration testing, or security research against our infrastructure without prior written authorization</li>
+                  <li>Engage in scraping, crawling, or automated data collection beyond normal browser use</li>
                 </ul>
+              </div>
+            </section>
+
+            <section>
+              <h2 className="text-xl font-bold text-cyan-400 mb-4 font-mono">// SECURITY_AND_ACTIVE_DEFENSE</h2>
+              <div className="space-y-4 text-white/80">
+                <p>
+                  Void Vendor employs active defense systems to protect our infrastructure. By accessing this site
+                  you acknowledge and agree to the following:
+                </p>
+                <ul className="list-disc list-inside space-y-2">
+                  <li><strong className="text-white">Automated scanning is prohibited.</strong> Running vulnerability scanners, directory brute-forcers, or any automated probing tools against voidvendor.com is expressly forbidden and constitutes unauthorized access under applicable computer fraud laws (including the US CFAA).</li>
+                  <li><strong className="text-white">Active defense is in operation.</strong> Our servers employ honeypots, rate limiting, behavioral analysis, and IP banning. Triggering these defenses will result in permanent access restrictions without notice.</li>
+                  <li><strong className="text-white">Offending IPs are reported.</strong> Confirmed hostile IPs are automatically reported to AbuseIPDB and may be reported to relevant law enforcement or hosting providers.</li>
+                  <li><strong className="text-white">Honeypot disclosure.</strong> Certain endpoints on this site are intentional honeypots designed to identify automated scanners. Any data submitted to these endpoints (including credentials) is logged and retained as evidence of hostile activity.</li>
+                  <li><strong className="text-white">No authorized testing without consent.</strong> Do not conduct security testing against our live infrastructure. Responsible disclosure requests should be submitted via our contact page prior to any testing.</li>
+                </ul>
+                <p>
+                  Violation of this section may result in civil or criminal liability under the Computer Fraud and Abuse
+                  Act (US), Computer Misuse Act (UK), or equivalent laws in your jurisdiction, in addition to permanent
+                  banning and abuse reporting.
+                </p>
               </div>
             </section>
 

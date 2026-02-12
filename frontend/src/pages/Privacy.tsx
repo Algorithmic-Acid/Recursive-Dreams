@@ -20,7 +20,7 @@ export const Privacy = () => {
           <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 bg-clip-text text-transparent mb-4">
             PRIVACY POLICY
           </h1>
-          <p className="text-white/70 font-mono">[ LAST_UPDATED: JANUARY_2026 ]</p>
+          <p className="text-white/70 font-mono">[ LAST_UPDATED: FEBRUARY_2026 ]</p>
         </div>
 
         {/* Content */}
@@ -40,7 +40,7 @@ export const Privacy = () => {
               <h2 className="text-xl font-bold text-cyan-400 mb-4 font-mono">// INFORMATION_WE_COLLECT</h2>
               <div className="space-y-4 text-white/80">
                 <p><strong className="text-white">Personal Information:</strong> When you create an account or make a purchase, we collect your name, email address, shipping address, billing address, and payment information.</p>
-                <p><strong className="text-white">Automatically Collected Information:</strong> We automatically collect certain information when you visit our site, including your IP address, browser type, operating system, referring URLs, and information about how you interact with our site.</p>
+                <p><strong className="text-white">Automatically Collected Information:</strong> We automatically collect certain information when you visit our site, including your browser type, operating system, referring URLs, and information about how you interact with our site. IP addresses in general traffic logs are anonymized (last octet zeroed) before storage. Full IP addresses are retained only in security-related records where required for active defense purposes.</p>
                 <p><strong className="text-white">Cookies:</strong> We use cookies and similar tracking technologies to enhance your browsing experience, analyze site traffic, and personalize content.</p>
               </div>
             </section>
@@ -111,6 +111,46 @@ export const Privacy = () => {
                 We may update this Privacy Policy from time to time. We will notify you of any changes by posting
                 the new policy on this page and updating the "Last Updated" date.
               </p>
+            </section>
+
+            <section>
+              <h2 className="text-xl font-bold text-cyan-400 mb-4 font-mono">// DATA_RETENTION</h2>
+              <div className="space-y-3 text-white/80">
+                <p>We retain your data only as long as necessary:</p>
+                <ul className="list-disc list-inside space-y-2">
+                  <li><strong className="text-white">Traffic logs:</strong> Automatically purged after 90 days. General visitor logs store anonymized IPs.</li>
+                  <li><strong className="text-white">Account data:</strong> Retained for the life of your account. Request deletion at any time.</li>
+                  <li><strong className="text-white">Order records:</strong> Retained for 7 years for tax/legal compliance.</li>
+                  <li><strong className="text-white">Security records:</strong> IP addresses of confirmed attackers may be retained indefinitely as evidence of hostile activity against our infrastructure.</li>
+                </ul>
+              </div>
+            </section>
+
+            <section>
+              <h2 className="text-xl font-bold text-cyan-400 mb-4 font-mono">// SECURITY_NOTICE</h2>
+              <div className="space-y-3 text-white/80">
+                <p>
+                  This website employs active defense mechanisms to protect against malicious traffic. These systems
+                  operate entirely on our own infrastructure and are reactive in nature — they only engage in response
+                  to requests made to our servers.
+                </p>
+                <p>
+                  Automated scanning, vulnerability testing, brute-force attacks, and other malicious or unauthorized
+                  probing of our infrastructure is strictly prohibited and <strong className="text-white">will result
+                  in permanent access restrictions</strong>. Offending IP addresses may be reported to global abuse
+                  databases including AbuseIPDB.
+                </p>
+                <p>
+                  Honeypot endpoints are active on this site. Any credentials or data submitted to these endpoints
+                  are logged for security analysis purposes. Do not submit real credentials to forms you reach via
+                  automated scanning.
+                </p>
+                <p>
+                  By accessing this site you agree to comply with our{' '}
+                  <a href="/terms" className="text-cyan-400 hover:text-cyan-300">Terms of Service</a> and to refrain
+                  from any form of automated attack or unauthorized testing against our infrastructure.
+                </p>
+              </div>
             </section>
 
             <section>
