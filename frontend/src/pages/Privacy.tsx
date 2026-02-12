@@ -150,6 +150,35 @@ export const Privacy = () => {
                   <a href="/terms" className="text-cyan-400 hover:text-cyan-300">Terms of Service</a> and to refrain
                   from any form of automated attack or unauthorized testing against our infrastructure.
                 </p>
+
+                <div className="mt-4 pt-4 border-t border-cyan-500/20">
+                  <p className="text-cyan-400 font-mono text-sm font-bold mb-3">// RESPONSIBLE_DISCLOSURE</p>
+                  <p className="mb-3">
+                    If you discover a genuine security vulnerability in Void Vendor, we ask that you follow responsible
+                    disclosure practices:
+                  </p>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-3">
+                      <p className="text-green-400 font-mono text-xs font-bold mb-2">✓ DO</p>
+                      <ul className="space-y-1 text-sm text-white/70">
+                        <li>Contact us via the site's contact page or GitHub issues with a clear description of the vulnerability</li>
+                        <li>Give us reasonable time to investigate and patch before public disclosure</li>
+                        <li>Include steps to reproduce and potential impact</li>
+                      </ul>
+                    </div>
+                    <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3">
+                      <p className="text-red-400 font-mono text-xs font-bold mb-2">✗ DO NOT</p>
+                      <ul className="space-y-1 text-sm text-white/70">
+                        <li>Exploit the vulnerability or use it to access any user data</li>
+                        <li>Perform automated scans or brute-force tests against production — this <strong className="text-white">will</strong> trigger a ban and AbuseIPDB report</li>
+                        <li>Publicly disclose the issue before we've had a chance to fix it</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <p className="text-white/60 text-sm mt-3">
+                    We will credit researchers who responsibly disclose valid vulnerabilities.
+                  </p>
+                </div>
               </div>
             </section>
 

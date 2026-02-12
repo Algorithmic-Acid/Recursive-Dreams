@@ -228,7 +228,7 @@ export const Donate = () => {
               We truly appreciate your generosity.
             </p>
             <div className="mt-6 pt-6 border-t border-cyan-500/10">
-              <p className="text-cyan-400/70 text-sm font-mono">
+              <p className="text-cyan-400/70 text-[10px] sm:text-sm font-mono whitespace-nowrap overflow-hidden text-ellipsis">
                 [ ALL_DONATIONS_GO_DIRECTLY_TO_DEVELOPMENT ]
               </p>
             </div>

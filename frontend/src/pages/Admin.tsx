@@ -1880,13 +1880,13 @@ export const Admin = () => {
             )}
 
             {/* Smart Threat Alerts */}
-            {threatAlerts.length > 0 && (
-              <div className="bg-dark-card border border-red-500/40 rounded-lg p-3 sm:p-6">
-                <div className="flex items-center justify-between mb-3 sm:mb-4">
-                  <h3 className="text-sm sm:text-lg font-bold text-red-400 font-mono flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse" />
-                    THREAT_ALERTS ({threatAlerts.length})
-                  </h3>
+            <div className={`bg-dark-card rounded-lg p-3 sm:p-6 border ${threatAlerts.length > 0 ? 'border-red-500/40' : 'border-white/10'}`}>
+              <div className="flex items-center justify-between mb-3 sm:mb-4">
+                <h3 className={`text-sm sm:text-lg font-bold font-mono flex items-center gap-2 ${threatAlerts.length > 0 ? 'text-red-400' : 'text-white/40'}`}>
+                  <AlertTriangle className={`w-4 h-4 sm:w-5 sm:h-5 ${threatAlerts.length > 0 ? 'animate-pulse' : ''}`} />
+                  THREAT_ALERTS {threatAlerts.length > 0 ? `(${threatAlerts.length})` : ''}
+                </h3>
+                {threatAlerts.length > 0 && (
                   <button
                     type="button"
                     onClick={handleDismissAllAlerts}
@@ -1894,7 +1894,11 @@ export const Admin = () => {
                   >
                     DISMISS ALL
                   </button>
-                </div>
+                )}
+              </div>
+              {threatAlerts.length === 0 ? (
+                <p className="text-xs font-mono text-green-400/60">// ALL_CLEAR — no active threat alerts</p>
+              ) : (
                 <div className="space-y-2">
                   {threatAlerts.map((alert: any) => (
                     <div key={alert.id} className={`flex items-start gap-2 p-2 sm:p-3 rounded-lg border ${
@@ -1937,13 +1941,15 @@ export const Admin = () => {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Attack Timeline Chart */}
-            {attackTimeline.length > 0 && (
-              <div className="bg-dark-card border border-red-500/20 rounded-lg p-3 sm:p-6">
-                <h3 className="text-sm sm:text-lg font-bold text-red-400 mb-3 sm:mb-4 font-mono">ATTACK_TIMELINE (24h)</h3>
+            <div className="bg-dark-card border border-red-500/20 rounded-lg p-3 sm:p-6">
+              <h3 className="text-sm sm:text-lg font-bold text-red-400 mb-3 sm:mb-4 font-mono">ATTACK_TIMELINE (24h)</h3>
+              {attackTimeline.length === 0 ? (
+                <p className="text-xs font-mono text-white/30 py-4 text-center">// no attack events recorded in last 24h</p>
+              ) : (
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={attackTimeline} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -1957,13 +1963,15 @@ export const Admin = () => {
                     <Bar dataKey="creds" name="Cred Harvest" fill="#ec4899" stackId="a" />
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Honeypot Hit Heatmap */}
-            {honeypotHeatmap.length > 0 && (
-              <div className="bg-dark-card border border-orange-500/20 rounded-lg p-3 sm:p-6">
-                <h3 className="text-sm sm:text-lg font-bold text-orange-400 mb-3 sm:mb-4 font-mono">HONEYPOT_HEATMAP</h3>
+            <div className="bg-dark-card border border-orange-500/20 rounded-lg p-3 sm:p-6">
+              <h3 className="text-sm sm:text-lg font-bold text-orange-400 mb-3 sm:mb-4 font-mono">HONEYPOT_HEATMAP</h3>
+              {honeypotHeatmap.length === 0 ? (
+                <p className="text-xs font-mono text-white/30 py-4 text-center">// no honeypot hits recorded yet</p>
+              ) : (
                 <div className="space-y-1.5">
                   {honeypotHeatmap.map((item: any, idx: number) => {
                     const maxHits = honeypotHeatmap[0]?.hits || 1;
@@ -1988,8 +1996,8 @@ export const Admin = () => {
                     );
                   })}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Manual Ban */}
             <div className="bg-dark-card border border-orange-500/20 rounded-lg p-3 sm:p-6">
