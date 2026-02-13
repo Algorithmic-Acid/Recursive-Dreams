@@ -94,7 +94,9 @@ A full-stack e-commerce platform for VST plugins with cyberpunk aesthetics. Feat
 - ✅ **Escalating ban tiers** - offense 1: 30min → 2: 2hr → 3: 24hr → 4: 7 days → 5+: permanent
 - ✅ **iptables integration** - Bans enforced at kernel level, survive server restarts
 - ✅ **Persistent bans** - `ip_bans` DB table, reloaded on startup; offense history preserved across restarts
-- ✅ **AbuseIPDB reporting** - Auto-reports with per-attack-type category codes (Port Scan, DDoS, Brute-Force, SQLi, Hacking, Bad Web Bot)
+- ✅ **AbuseIPDB reporting** - Auto-reports with per-attack-type category codes; report includes attacker IP, geo location (city/country/ISP via ipinfo.io), user agent, and path
+- ✅ **Geo location tracking** - Attack origin stored in `ip_bans.location` and displayed in admin dashboard ACTIVE_BANS table
+- ✅ **AbuseIPDB webmaster verified** - voidvendor.com registered as webmaster at abuseipdb.com
 - ✅ **Auth brute-force protection** - 10 attempts/min on login/register; ban after 2 violations
 - ✅ **Low-and-slow scanner detection** - Bans IPs hitting >40 distinct paths in 2 minutes
 - ✅ **IP rotation / fingerprint tracking** - Detects automated tools rotating IPs (missing accept-language + same fingerprint from 8+ IPs)
@@ -382,7 +384,12 @@ Requests pass through 11 checks in order:
 | 4th | 7 days |
 | 5th+ | **Permanent** |
 
-All bans: written to `ip_bans` DB table + iptables DROP rule (survive restarts) + AbuseIPDB report with category-specific codes.
+All bans: written to `ip_bans` DB table (with geo location) + iptables DROP rule (survive restarts) + AbuseIPDB report.
+
+**AbuseIPDB report format:**
+```
+VoidTrap [cats]: [offense #N → Xh] reason | ip: 1.2.3.4 | loc: City, Region, CC, ISP | path: /wp-admin | ua: Mozilla/5.0...
+```
 
 **AbuseIPDB category codes used:**
 - Scanner UA: 14 (Port Scan) + 19 (Bad Web Bot) + 21 (Web App Attack)

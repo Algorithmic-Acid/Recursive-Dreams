@@ -96,7 +96,7 @@ const REDIRECT_CYCLE: Record<string, string> = {
 
 // ─── IN-MEMORY STATE ───
 // expiresAt: null = permanent ban
-interface BannedIP { bannedAt: number; reason: string; hits: number; expiresAt: number | null; }
+interface BannedIP { bannedAt: number; reason: string; hits: number; expiresAt: number | null; location?: string; }
 interface RateEntry { count: number; windowStart: number; }
 interface AuthRateEntry { count: number; windowStart: number; violations: number; }
 
@@ -624,34 +624,55 @@ export const ABUSE_CATEGORIES = {
   HACKING:         '15,21',    // Hacking + Web App Attack
 } as const;
 
+// ─── GEO LOOKUP ───
+const geoLookup = (ip: string, cb: (loc: string) => void) => {
+  const req = https.get(`https://ipinfo.io/${ip}/json`, (res) => {
+    let body = '';
+    res.on('data', (chunk) => { body += chunk; });
+    res.on('end', () => {
+      try {
+        const d = JSON.parse(body);
+        const parts = [d.city, d.region, d.country, d.org].filter(Boolean);
+        cb(parts.length ? parts.join(', ') : 'unknown location');
+      } catch { cb('unknown location'); }
+    });
+  });
+  req.on('error', () => cb('unknown location'));
+  req.setTimeout(3000, () => { req.destroy(); cb('unknown location'); });
+};
+
 // ─── REPORT TO ABUSEIPDB ───
-const reportToAbuseIPDB = (ip: string, reason: string, path: string, categories: string = ABUSE_CATEGORIES.HACKING) => {
+const reportToAbuseIPDB = (ip: string, reason: string, path: string, categories: string = ABUSE_CATEGORIES.HACKING, userAgent: string = '') => {
   const apiKey = process.env.ABUSEIPDB_API_KEY;
   if (!apiKey || ip === 'unknown') return;
   // Skip private/internal IPs
   if (/^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(ip)) return;
 
-  const ua = reason.length < 80 ? reason : reason.substring(0, 80);
-  const data = new URLSearchParams({
-    ip,
-    categories,
-    comment: `VoidTrap [${categories}]: ${ua} | path: ${path.substring(0, 80)}`,
-  }).toString();
+  geoLookup(ip, (location) => {
+    const reasonPart = reason.substring(0, 70);
+    const pathPart   = path.substring(0, 50);
+    const uaPart     = userAgent ? ` | ua: ${userAgent.substring(0, 60)}` : '';
+    const data = new URLSearchParams({
+      ip,
+      categories,
+      comment: `VoidTrap [${categories}]: ${reasonPart} | ip: ${ip} | loc: ${location} | path: ${pathPart}${uaPart}`,
+    }).toString();
 
-  const req = https.request({
-    hostname: 'api.abuseipdb.com',
-    path: '/api/v2/report',
-    method: 'POST',
-    headers: {
-      'Key': apiKey,
-      'Accept': 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Content-Length': Buffer.byteLength(data),
-    },
+    const req = https.request({
+      hostname: 'api.abuseipdb.com',
+      path: '/api/v2/report',
+      method: 'POST',
+      headers: {
+        'Key': apiKey,
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(data),
+      },
+    });
+    req.on('error', () => {});
+    req.write(data);
+    req.end();
   });
-  req.on('error', () => {});
-  req.write(data);
-  req.end();
 };
 
 // ─── IPTABLES INTEGRATION ───
@@ -681,13 +702,13 @@ const logTrapHit = (ip: string, path: string, reason: string, userAgent: string)
 
 // ─── PERSIST BAN TO DB ───
 // expiresAt = null means permanent ban (stored as NULL in DB)
-const persistBan = (ip: string, reason: string, expiresAt: Date | null) => {
+const persistBan = (ip: string, reason: string, expiresAt: Date | null, location: string = 'unknown') => {
   db.query(
-    `INSERT INTO ip_bans (ip_address, reason, hits, banned_at, expires_at)
-     VALUES ($1, $2, 1, NOW(), $3)
+    `INSERT INTO ip_bans (ip_address, reason, hits, banned_at, expires_at, location)
+     VALUES ($1, $2, 1, NOW(), $3, $4)
      ON CONFLICT (ip_address) DO UPDATE
-       SET reason = $2, hits = ip_bans.hits + 1, banned_at = NOW(), expires_at = $3`,
-    [ip, reason, expiresAt]
+       SET reason = $2, hits = ip_bans.hits + 1, banned_at = NOW(), expires_at = $3, location = $4`,
+    [ip, reason, expiresAt, location]
   ).catch(err => console.error('Failed to persist IP ban:', err.message));
 };
 
@@ -708,12 +729,14 @@ const banIP = (ip: string, reason: string, path: string, userAgent: string, cate
   const { ms: durationMs, label: durationLabel } = getBanTier(offenses);
   const expiresAt = durationMs ? new Date(Date.now() + durationMs) : null;
 
-  blacklist.set(ip, { bannedAt: Date.now(), reason, hits: 1, expiresAt: expiresAt?.getTime() ?? null });
-  persistBan(ip, reason, expiresAt);
-  banWithIptables(ip);
   const escalatedReason = `[offense #${offenses} → ${durationLabel}] ${reason}`;
   logTrapHit(ip, path, escalatedReason, userAgent);
-  reportToAbuseIPDB(ip, escalatedReason, path, categories);
+  banWithIptables(ip);
+  geoLookup(ip, (location) => {
+    blacklist.set(ip, { bannedAt: Date.now(), reason, hits: 1, expiresAt: expiresAt?.getTime() ?? null, location });
+    persistBan(ip, reason, expiresAt, location);
+    reportToAbuseIPDB(ip, escalatedReason, path, categories, userAgent);
+  });
 };
 
 // ─── LOAD PERSISTED BANS ON STARTUP ───
@@ -731,7 +754,7 @@ export const loadPersistedBans = async (): Promise<void> => {
 
     // Load only active + permanent bans into blacklist + re-apply iptables
     const activeResult = await db.query(
-      `SELECT ip_address, reason, hits, banned_at, expires_at FROM ip_bans
+      `SELECT ip_address, reason, hits, banned_at, expires_at, location FROM ip_bans
        WHERE expires_at > NOW() OR expires_at IS NULL`
     );
 
@@ -742,6 +765,7 @@ export const loadPersistedBans = async (): Promise<void> => {
         reason: row.reason,
         hits: row.hits,
         expiresAt,
+        location: row.location || 'unknown',
       });
       banWithIptables(row.ip_address);
     }
@@ -1003,7 +1027,7 @@ export const dismissAllAlerts = (): number => {
 
 // ─── ADMIN: Get blacklist status ───
 export const getBlacklistStatus = () => {
-  const entries: Array<{ ip: string; reason: string; hits: number; bannedAt: string; expiresIn: string; offenses: number }> = [];
+  const entries: Array<{ ip: string; reason: string; hits: number; bannedAt: string; expiresIn: string; offenses: number; location: string }> = [];
   const now = Date.now();
   for (const [ip, ban] of blacklist) {
     const expiresIn = ban.expiresAt === null
@@ -1014,6 +1038,7 @@ export const getBlacklistStatus = () => {
       bannedAt: new Date(ban.bannedAt).toISOString(),
       expiresIn,
       offenses: offenseCount.get(ip) ?? 1,
+      location: ban.location || 'unknown',
     });
   }
 

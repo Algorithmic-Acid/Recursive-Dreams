@@ -198,7 +198,20 @@ export const Privacy = () => {
 
       {/* Footer */}
       <footer className="bg-dark-card border-t border-cyan-500/20 py-6 mt-12">
-        <div className="container mx-auto px-4 text-center">
+        <div className="container mx-auto px-4 text-center space-y-4">
+          <a
+            href="https://www.abuseipdb.com/user/270075"
+            title="AbuseIPDB is an IP address blacklist for webmasters and sysadmins to report IP addresses engaging in abusive behavior on their networks"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block"
+          >
+            <img
+              src="https://www.abuseipdb.com/contributor/270075.svg"
+              alt="AbuseIPDB Contributor Badge"
+              className="h-10 mx-auto"
+            />
+          </a>
           <p className="text-white/40 text-xs font-mono">&lt; VOID_VENDOR :: 2026 :: ALL_RIGHTS_RESERVED /&gt;</p>
         </div>
       </footer>

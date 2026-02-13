@@ -2038,7 +2038,8 @@ export const Admin = () => {
                     <thead>
                       <tr className="border-b border-red-500/20">
                         <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs">IP</th>
-                        <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs">REASON</th>
+                        <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs hidden md:table-cell">LOCATION</th>
+                        <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs hidden lg:table-cell">REASON</th>
                         <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs">HITS</th>
                         <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs hidden sm:table-cell">OFFENSE</th>
                         <th className="px-2 sm:px-4 py-2 text-left text-red-400 font-mono text-[10px] sm:text-xs hidden sm:table-cell">EXPIRES</th>
@@ -2051,7 +2052,8 @@ export const Admin = () => {
                           <td className="px-2 sm:px-4 py-2 font-mono text-[10px] sm:text-xs">
                             <span className={entry.expiresIn === 'permanent' ? 'text-red-300 font-bold' : 'text-white'}>{entry.ip}</span>
                           </td>
-                          <td className="px-2 sm:px-4 py-2 text-white/70 text-[10px] sm:text-xs truncate max-w-[150px]">{entry.reason}</td>
+                          <td className="px-2 sm:px-4 py-2 text-cyan-400/70 text-[10px] sm:text-xs truncate max-w-[160px] hidden md:table-cell">{entry.location || '—'}</td>
+                          <td className="px-2 sm:px-4 py-2 text-white/70 text-[10px] sm:text-xs truncate max-w-[150px] hidden lg:table-cell">{entry.reason}</td>
                           <td className="px-2 sm:px-4 py-2 text-orange-400 font-mono text-[10px] sm:text-xs">{entry.hits}</td>
                           <td className="px-2 sm:px-4 py-2 font-mono text-[10px] sm:text-xs hidden sm:table-cell">
                             <span className={entry.offenses >= 5 ? 'text-red-400 font-bold' : 'text-yellow-400'}>#{entry.offenses ?? 1}</span>

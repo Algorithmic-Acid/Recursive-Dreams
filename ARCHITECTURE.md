@@ -189,11 +189,11 @@ banIP(ip, reason, path, userAgent, abuseCategories)
   ├─ Skip: ::1, ::ffff:127.x, private IPs, ADMIN_IPS whitelist
   ├─ offenseCount.get(ip) + 1          — cumulative offense tracking
   ├─ getBanTier(offenses)              — escalate duration
-  ├─ blacklist.set(ip, expiresAt)      — in-memory fast check
-  ├─ db UPSERT ip_bans                 — persist across restarts
-  ├─ sudo /usr/local/bin/voidtrap ban  — iptables DROP rule at kernel level
-  ├─ INSERT INTO traffic_logs          — record the event
-  └─ POST api.abuseipdb.com/report     — report with category-specific codes
+  ├─ logTrapHit / banWithIptables      — log event + iptables DROP at kernel level
+  └─ geoLookup(ip) → ipinfo.io (3s timeout)
+       ├─ blacklist.set(ip, {expiresAt, location})  — in-memory fast check
+       ├─ db UPSERT ip_bans (location column)        — persist across restarts
+       └─ POST api.abuseipdb.com/report              — includes ip, location, ua, path
 ```
 
 **AbuseIPDB category codes:**
@@ -203,11 +203,17 @@ banIP(ip, reason, path, userAgent, abuseCategories)
 - SQL injection: `16,21` (SQL Injection + Web App Attack)
 - Hacking/honeypot: `15,21` (Hacking + Web App Attack)
 
+**AbuseIPDB report comment format:**
+```
+VoidTrap [cats]: [offense #N → Xh] reason | ip: 1.2.3.4 | loc: City, Region, CC, AS | path: /wp-admin | ua: Mozilla/5.0...
+```
+
 **Behavioral analysis state** (in-memory, reported via `/api/admin/security/blacklist`):
 - `pathTracker` Map — tracks distinct paths per IP in a 2-min window (flags scanners)
 - `fingerprintMap` Map — tracks tool fingerprints (UA+headers) across IPs (flags IP rotation)
 - `credentialMap` Map — tracks credential attempts per IP across IPs (flags stuffing attacks)
 - `alerts` Array — up to 100 smart alerts (CREDENTIAL_STUFFING, BAN_EVASION, ADMIN_HONEYPOT, IP_ROTATION)
+- `BannedIP.location` — geo string stored on each ban entry (city, region, country, ISP via ipinfo.io)
 - All exposed via dedicated admin API endpoints with dismiss support
 
 **requestLogger** (`requestLogger.ts`):
@@ -395,7 +401,8 @@ ip_bans (
   reason TEXT,
   hits INT,                       -- cumulative offense count (seeds offenseCount on restart)
   banned_at TIMESTAMPTZ,
-  expires_at TIMESTAMPTZ          -- NULL = permanent ban; rows kept 90 days after expiry
+  expires_at TIMESTAMPTZ,         -- NULL = permanent ban; rows kept 90 days after expiry
+  location TEXT DEFAULT 'unknown' -- geo string from ipinfo.io (city, region, country, ISP)
 )
 ```
 

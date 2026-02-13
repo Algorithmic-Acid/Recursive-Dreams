@@ -28,7 +28,8 @@ VoidTrap is a server-side middleware layer that protects Void Vendor's infrastru
 - **Smart alerting**: Automated detection of credential stuffing attacks, ban evasion attempts, IP rotation campaigns, and admin IP anomalies — alerts are surfaced in the admin dashboard for human review
 - **Escalating bans**: Repeat offenders face progressively longer bans up to permanent
 - **iptables integration**: Bans are enforced at the kernel level, not just application level
-- **AbuseIPDB reporting**: Confirmed attackers are automatically reported to the global AbuseIPDB database with appropriate category codes
+- **AbuseIPDB reporting**: Confirmed attackers are automatically reported to the global AbuseIPDB database with appropriate category codes; reports include attacker IP, geo location (city/country/ISP via ipinfo.io), user agent string, and requested path
+- **Geo location lookup**: At the moment of ban, the attacker's IP is resolved to city/region/country/ISP via ipinfo.io and stored in `ip_bans.location` for display in the admin dashboard and inclusion in AbuseIPDB reports
 
 ### Legal Basis
 
@@ -44,7 +45,9 @@ All active defense measures are applied only to traffic that first contacts **ou
 
 **Deceptive responses are lawful.** Serving `503` errors or redirect loops to scanners probing our own infrastructure is a well-established defensive technique (analogous to a firewall sending TCP RST or ICMP port unreachable). We are not misrepresenting anything to good-faith users — these responses only trigger in response to requests for paths that no legitimate user would access.
 
-**AbuseIPDB reporting** is performed in good faith under their [Terms of Service](https://www.abuseipdb.com/terms). We report only IPs that have demonstrated hostile behavior against our infrastructure. Reports include category codes and evidence-based descriptions.
+**AbuseIPDB reporting** is performed in good faith under their [Terms of Service](https://www.abuseipdb.com/terms). We report only IPs that have demonstrated hostile behavior against our infrastructure. Reports include category codes, attacker IP, geo location, user agent, and the path that triggered the ban. voidvendor.com is a registered webmaster on AbuseIPDB.
+
+**Geo location lookups** against ipinfo.io are performed solely for security purposes (ban records and abuse reporting). Only attacker IPs are looked up — never user or customer IPs. ipinfo.io's [privacy policy](https://ipinfo.io/privacy-policy) governs their handling of these requests.
 
 ---
 
