@@ -1958,6 +1958,64 @@ export const Admin = () => {
               )}
             </div>
 
+            {/* Credential Harvest Log */}
+            <div className={`bg-dark-card rounded-lg p-3 sm:p-6 border ${credHarvests.length > 0 ? 'border-pink-500/40' : 'border-pink-500/20'}`}>
+              <div className="flex items-center justify-between mb-3 sm:mb-4">
+                <h3 className={`text-sm sm:text-lg font-bold font-mono flex items-center gap-2 ${credHarvests.length > 0 ? 'text-pink-400' : 'text-pink-400/60'}`}>
+                  🕵️ CRED_HARVEST_LOG {credHarvests.length > 0 ? `(${credHarvests.length})` : ''}
+                </h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] sm:text-xs font-mono text-white/40">{credHarvests.length} entries · in-memory</span>
+                  {credHarvests.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearCredHarvests}
+                      className="px-2 sm:px-3 py-1 bg-pink-500/10 border border-pink-500/30 rounded text-pink-400 hover:bg-pink-500/20 transition-colors font-mono text-[10px] sm:text-xs"
+                    >
+                      CLEAR_LOG
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-[10px] sm:text-xs font-mono text-white/30 mb-3">
+                // credentials submitted to WP honeypot login — passwords partially masked — resets on backend restart
+              </p>
+              {credHarvests.length === 0 ? (
+                <p className="text-xs font-mono text-white/30 py-4 text-center">// no credentials harvested yet</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[10px] sm:text-xs font-mono">
+                    <thead>
+                      <tr className="text-left border-b border-pink-500/20">
+                        <th className="px-2 py-2 text-pink-400/70">TIME</th>
+                        <th className="px-2 py-2 text-pink-400/70">IP</th>
+                        <th className="px-2 py-2 text-pink-400/70">USERNAME</th>
+                        <th className="px-2 py-2 text-pink-400/70">PASSWORD</th>
+                        <th className="px-2 py-2 text-pink-400/70 hidden sm:table-cell">FAKE_SUCCESS</th>
+                        <th className="px-2 py-2 text-pink-400/70 hidden md:table-cell">USER-AGENT</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...credHarvests].reverse().map((h: any, idx: number) => (
+                        <tr key={idx} className="border-b border-pink-500/10 hover:bg-pink-500/5 transition-colors">
+                          <td className="px-2 py-1.5 text-white/50">{new Date(h.timestamp).toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-cyan-400">{h.ip}</td>
+                          <td className="px-2 py-1.5 text-yellow-300">{h.username}</td>
+                          <td className="px-2 py-1.5 text-orange-300">{h.password}</td>
+                          <td className="px-2 py-1.5 hidden sm:table-cell">
+                            {h.fakeSuccess
+                              ? <span className="text-green-400">✓ cookie sent</span>
+                              : <span className="text-white/30">✗ error shown</span>}
+                          </td>
+                          <td className="px-2 py-1.5 text-white/30 truncate max-w-[160px] hidden md:table-cell">{h.userAgent}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             {/* Attack Timeline Chart */}
             <div className="bg-dark-card border border-red-500/20 rounded-lg p-3 sm:p-6">
               <h3 className="text-sm sm:text-lg font-bold text-red-400 mb-3 sm:mb-4 font-mono">ATTACK_TIMELINE (24h)</h3>
@@ -2009,62 +2067,6 @@ export const Admin = () => {
                       </div>
                     );
                   })}
-                </div>
-              )}
-            </div>
-
-            {/* Credential Harvest Log */}
-            <div className="bg-dark-card border border-pink-500/20 rounded-lg p-3 sm:p-6">
-              <div className="flex items-center justify-between mb-3 sm:mb-4">
-                <h3 className="text-sm sm:text-lg font-bold text-pink-400 font-mono">CRED_HARVEST_LOG</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] sm:text-xs font-mono text-white/40">{credHarvests.length} entries (in-memory)</span>
-                  {credHarvests.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleClearCredHarvests}
-                      className="px-2 sm:px-3 py-1 bg-pink-500/10 border border-pink-500/30 rounded text-pink-400 hover:bg-pink-500/20 transition-colors font-mono text-[10px] sm:text-xs"
-                    >
-                      CLEAR_LOG
-                    </button>
-                  )}
-                </div>
-              </div>
-              <p className="text-[10px] sm:text-xs font-mono text-white/30 mb-3">
-                // credentials submitted to WP honeypot login — passwords partially masked — resets on backend restart
-              </p>
-              {credHarvests.length === 0 ? (
-                <p className="text-xs font-mono text-white/30 py-4 text-center">// no credentials harvested yet</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[10px] sm:text-xs font-mono">
-                    <thead>
-                      <tr className="text-left border-b border-pink-500/20">
-                        <th className="px-2 py-2 text-pink-400/70">TIME</th>
-                        <th className="px-2 py-2 text-pink-400/70">IP</th>
-                        <th className="px-2 py-2 text-pink-400/70">USERNAME</th>
-                        <th className="px-2 py-2 text-pink-400/70">PASSWORD</th>
-                        <th className="px-2 py-2 text-pink-400/70 hidden sm:table-cell">FAKE_SUCCESS</th>
-                        <th className="px-2 py-2 text-pink-400/70 hidden md:table-cell">USER-AGENT</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...credHarvests].reverse().map((h: any, idx: number) => (
-                        <tr key={idx} className="border-b border-pink-500/10 hover:bg-pink-500/5 transition-colors">
-                          <td className="px-2 py-1.5 text-white/50">{new Date(h.timestamp).toLocaleString()}</td>
-                          <td className="px-2 py-1.5 text-cyan-400">{h.ip}</td>
-                          <td className="px-2 py-1.5 text-yellow-300">{h.username}</td>
-                          <td className="px-2 py-1.5 text-orange-300">{h.password}</td>
-                          <td className="px-2 py-1.5 hidden sm:table-cell">
-                            {h.fakeSuccess
-                              ? <span className="text-green-400">✓ cookie sent</span>
-                              : <span className="text-white/30">✗ error shown</span>}
-                          </td>
-                          <td className="px-2 py-1.5 text-white/30 truncate max-w-[160px] hidden md:table-cell">{h.userAgent}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               )}
             </div>
