@@ -125,19 +125,24 @@ backend/src/
 
 ### Middleware Chain Detail
 
-**VoidTrap** (`voidTrap.ts`) — 11 checks in order:
+**VoidTrap** (`voidTrap.ts`) — 16 checks in order:
 
 | # | Check | Action on Trigger |
 |---|-------|-------------------|
 | 1 | Blacklisted IP | Slow-drip tarpit (1 byte/3s, up to 10 min) + BAN_EVASION alert at 50/200/500 hits |
+| 1b | HTTP method abuse (TRACE/CONNECT; PUT/DELETE/PATCH on non-API paths) | Instant ban + 405 |
+| 1c | Fake token pivot (Bearer token matches harvested honeypot credential) | Instant ban + 401 |
+| 1d | Content-type mismatch (claims JSON, body fails to parse) | Instant ban + 400 |
+| 1e | AbuseIPDB pre-check on first-seen IPs (confidence ≥ 80%) | Instant ban (async/cached 24h) |
 | 2 | Scanner User-Agent | Instant ban (iptables + DB + AbuseIPDB) |
 | 3 | Global rate limit (50 req/10s) | Instant ban |
 | 4a | Auth brute-force (10/min on login/register) | Ban after 2 violations |
-| 4b | Credential stuffing (same creds from 3+ IPs/10min) | CREDENTIAL_STUFFING CRITICAL alert |
+| 4b | Hidden honeypot form field (`_void`) non-empty on auth request | Instant ban + 401 |
+| 4c | Credential stuffing (same creds from 3+ IPs/10min) | CREDENTIAL_STUFFING CRITICAL alert |
 | 5 | Low-and-slow scanner (>40 distinct paths/2min) | Instant ban |
 | 6 | IP rotation fingerprint (no accept-language, 8+ IPs same fingerprint) | Instant ban + IP_ROTATION alert |
 | 7a | Redirect loop trap (6 paths cycle 302 → each other) | Ban + 302 redirect loop |
-| 7b | Honeypot path hit | Deceptive response (300–1200ms delay, 15% chance 503) + ban |
+| 7b | Honeypot path hit (50+ paths incl. robots.txt bait paths) | Deceptive response (300–1200ms delay, 15% chance 503) + ban |
 | 8 | URL pattern match (SQLi, traversal, bad ext) | 403 or ban |
 | 9 | POST body injection scan | 403 |
 | 10 | Oversized payload (>5MB) | 413 |
@@ -171,6 +176,9 @@ All honeypot responses include a 300–1200ms random delay to slow scanner throu
 - **15% chance**: `503 Service Temporarily Unavailable` with randomized `Retry-After` (makes scanner think server crashed)
 - **Rotating status codes** (`trapPathCounter` Map): each trap path cycles through four response modes globally — `403 Forbidden`, `404 Not Found`, `401 Unauthorized` (with `WWW-Authenticate: Basic` header), then normal deceptive response — so different scanners probing the same path see different results and cannot fingerprint which response means "real endpoint"
 - **Fake credential success**: 30% of POST attempts to `/wp-login.php` return a `302` redirect to `/wp-admin/` with a convincing but bogus `wordpress_logged_in_xxx` cookie, sending the attacker on a futile rabbit-hole trying to use it
+- **Credential harvest log**: WP honeypot POST submissions stored in-memory (`credHarvests[]`, max 500, passwords partially masked), accessible in admin dashboard as `CRED_HARVEST_LOG` with one-click clear button
+- **robots.txt bait paths**: `/wp-backup`, `/admin-secret`, `/database-backup`, `/old`, `/dev` listed as `Disallow` in `robots.txt` to attract scanners that read it; all five wired to TRAP_PATHS for instant ban on access
+- **Fake token set** (`fakeTokens`): all fake credentials served in honeypot responses (JWT secrets, Stripe keys, K8s base64 values) are pre-loaded; any `Authorization: Bearer <fakeToken>` request triggers instant ban (pivot detection)
 
 **Redirect loop deception** (`REDIRECT_CYCLE`): Six trap paths cycle infinite 302 redirects between pairs, wasting scanner threads:
 - `/wp-admin/setup-config.php` ↔ `/wp-admin/install.php`
@@ -333,9 +341,10 @@ App (React Router)
     │       ├── Threat alerts (CREDENTIAL_STUFFING, BAN_EVASION, ADMIN_HONEYPOT, IP_ROTATION)
     │       ├── Attack timeline chart (24h stacked bar: honeypot/rate-limit/blocked/cred-harvest)
     │       ├── Honeypot heatmap (top 20 trap paths by all-time hit count)
+    │       ├── Credential harvest log (CRED_HARVEST_LOG — WP honeypot submissions, masked pw, clearable)
     │       ├── Stats: active bans, permanent, tracked IPs, rate limit
     │       ├── Manual ban / unban
-    │       ├── Active bans table (IP, reason, hits, offense#, expires)
+    │       ├── Active bans table (IP, reason, hits, offense#, expires, location)
     │       ├── Honeypot trap log (last 50 hits)
     │       └── Behavioral analysis panel
     │           ├── Path scanner monitor (IPs near 40-path threshold)
@@ -492,6 +501,8 @@ CryptoConverter component (CryptoConverter.tsx)
 | DELETE /api/admin/security/alerts | Admin | Dismiss all alerts |
 | GET /api/admin/security/honeypot-heatmap | Admin | Top 20 trap paths by hit count |
 | GET /api/admin/security/attack-timeline | Admin | 24h attack events grouped by hour |
+| GET /api/admin/security/cred-harvests | Admin | In-memory WP honeypot credential harvest log |
+| DELETE /api/admin/security/cred-harvests | Admin | Clear credential harvest log |
 
 ## File Serving
 

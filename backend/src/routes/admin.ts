@@ -3,7 +3,7 @@ import { protect, admin } from '../middleware/auth';
 import { db } from '../config/postgres';
 import { ApiResponse } from '../types';
 import { getRequestLogs, getLogStats, clearRequestLogs } from '../middleware/requestLogger';
-import { getBlacklistStatus, manualBan, manualUnban, getAlerts, dismissAlert, dismissAllAlerts } from '../middleware/voidTrap';
+import { getBlacklistStatus, manualBan, manualUnban, getAlerts, dismissAlert, dismissAllAlerts, getCredHarvests, clearCredHarvests } from '../middleware/voidTrap';
 
 const router = express.Router();
 
@@ -1142,6 +1142,16 @@ router.get('/security/attack-timeline', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ success: false, error: 'Failed to fetch attack timeline' });
   }
+});
+
+// Harvested WP honeypot credentials — stored in memory, cleared on demand
+router.get('/security/cred-harvests', protect, admin, (_req: Request, res: Response) => {
+  res.json({ success: true, data: getCredHarvests() });
+});
+
+router.delete('/security/cred-harvests', protect, admin, (_req: Request, res: Response) => {
+  const count = clearCredHarvests();
+  res.json({ success: true, message: `Cleared ${count} credential harvest entries` });
 });
 
 export default router;

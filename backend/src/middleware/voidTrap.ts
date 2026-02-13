@@ -123,6 +123,32 @@ const fakeTokens = new Set<string>([
 const abuseIpCache = new Map<string, { score: number; cachedAt: number }>();
 const ABUSE_CACHE_TTL = 24 * 60 * 60_000; // 24 hours
 
+// ─── CREDENTIAL HARVEST LOG ───
+// Stores harvested fake credentials submitted to the WP honeypot login page
+export interface CredHarvest {
+  timestamp: number;
+  ip: string;
+  username: string;
+  password: string; // partially masked — first 3 chars + *** + length hint
+  userAgent: string;
+  fakeSuccess: boolean; // true if we served the fake 302 auth cookie
+}
+const credHarvests: CredHarvest[] = [];
+const MAX_CRED_HARVESTS = 500;
+
+const maskPassword = (pw: string): string => {
+  if (!pw) return '(empty)';
+  if (pw.length <= 3) return '***';
+  return pw.substring(0, 3) + '***' + `(len:${pw.length})`;
+};
+
+export const getCredHarvests = (): CredHarvest[] => [...credHarvests];
+export const clearCredHarvests = (): number => {
+  const count = credHarvests.length;
+  credHarvests.length = 0;
+  return count;
+};
+
 // ─── SMART ALERT SYSTEM ───
 export interface ThreatAlert {
   id: string;
@@ -391,7 +417,18 @@ const getDeceptiveResponse = (
         trackCredentialAttempt(ip, username, password);
       }
       // 30% chance: fake credential success — attacker wastes time using a bogus auth cookie
-      if (Math.random() < 0.30) {
+      const fakeSuccessRoll = Math.random() < 0.30;
+      // Store harvest in memory for admin review (masked password, capped at MAX)
+      if (credHarvests.length >= MAX_CRED_HARVESTS) credHarvests.shift();
+      credHarvests.push({
+        timestamp: Date.now(),
+        ip,
+        username: username || '(none)',
+        password: maskPassword(password),
+        userAgent: userAgent.substring(0, 150),
+        fakeSuccess: fakeSuccessRoll,
+      });
+      if (fakeSuccessRoll) {
         const fakeToken  = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
         const fakeCookie = `wordpress_logged_in_${Math.random().toString(16).slice(2, 10)}=${username || 'admin'}%7C${Date.now()}%7C${fakeToken}; path=/; HttpOnly`;
         return {

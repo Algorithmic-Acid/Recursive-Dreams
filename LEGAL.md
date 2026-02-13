@@ -24,7 +24,13 @@ VoidTrap is a server-side middleware layer that protects Void Vendor's infrastru
 - **Honeypot paths**: Fake but convincing responses (`.env`, `wp-login.php`, phpMyAdmin, Kubernetes API, etc.) that attract and identify automated scanners
 - **Deception layering**: 15% of honeypot hits return `503 Service Temporarily Unavailable`; trap paths cycle rotating status codes (403, 404, 401, 200) so automated scanners cannot fingerprint valid endpoints; certain trap paths issue infinite 302 redirect cycles to waste scanner threads
 - **Fake credential success**: 30% of POST attempts to the WordPress login honeypot receive a fabricated `302` redirect with a bogus authentication cookie, inducing the attacker to waste time attempting to use a non-functional token against real endpoints
-- **Credential harvesting from attackers**: WordPress login form captures credentials submitted by attackers — this data is stored for security analysis only and is never used to access third-party systems
+- **Credential harvesting from attackers**: WordPress login form captures credentials submitted by attackers — passwords are partially masked and stored in-memory only (reset on restart); displayed in a clearable admin dashboard log for security analysis and never used to access third-party systems
+- **robots.txt honeypot bait**: Tempting `Disallow` paths are listed in `robots.txt` to attract scanners; any request to those paths triggers the same honeypot response and ban as direct trap path hits
+- **Fake token pivot detection**: Fake API credentials served in honeypot responses are tracked; any subsequent request using those credentials triggers instant ban
+- **HTTP method abuse detection**: Unusual HTTP methods (`TRACE`, `CONNECT`) and REST-probing methods (`PUT`, `DELETE`, `PATCH`) on non-API paths indicate automated scanning and trigger instant ban
+- **Hidden form honeypot field**: A CSS-invisible form field (`_void`) in the login/registration form catches bots that auto-fill all fields; human users never see or interact with it
+- **Content-type mismatch detection**: Requests claiming `application/json` with an unparseable body — a scanner tell — trigger instant ban
+- **AbuseIPDB reputation pre-check**: First requests from new IPs are checked against AbuseIPDB's reputation database (confidence score ≥ 80% triggers instant ban); results cached 24 hours to minimize API usage
 - **Slow-drip tarpit**: Banned connections are held open (1 byte/3 seconds, max 10 minutes) to exhaust scanner connection pools — this is a passive resource consumption technique applied only to already-banned IPs
 - **Smart alerting**: Automated detection of credential stuffing attacks, ban evasion attempts, IP rotation campaigns, and admin IP anomalies — alerts are surfaced in the admin dashboard for human review
 - **Escalating bans**: Repeat offenders face progressively longer bans up to permanent

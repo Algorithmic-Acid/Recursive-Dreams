@@ -81,13 +81,19 @@ A full-stack e-commerce platform for VST plugins with cyberpunk aesthetics. Feat
 - ✅ Revenue tracking
 
 ### Security Features
-- ✅ **VoidTrap middleware** - Multi-layer active defense (11 checks per request)
-- ✅ **Honeypot traps** - 50+ paths; catches WordPress/PHP/k8s/git/dependency scanners
+- ✅ **VoidTrap middleware** - Multi-layer active defense (16 checks per request)
+- ✅ **Honeypot traps** - 50+ paths incl. robots.txt bait paths; catches WordPress/PHP/k8s/git/dependency scanners
 - ✅ **Scanner UA blocking** - 20+ known tools (sqlmap, nikto, nuclei, gobuster...)
 - ✅ **Deceptive responses** - Fake `.env`, WordPress login, phpMyAdmin, Kubernetes API, `.git/config`, `package.json`, GraphQL introspection, XML-RPC, debug config
 - ✅ **Deception layering** - 15% of honeypot hits return `503`; rotating status codes (403→404→401→200) per path confuse scanners; 6 trap paths issue infinite 302 redirect loops
 - ✅ **Fake credential success** - 30% of WP login POST attempts receive a fake `302 → /wp-admin/` with a bogus auth cookie, sending the attacker on a futile rabbit-hole
-- ✅ **Credential harvesting** - WP login form captures attacker-submitted credentials
+- ✅ **Credential harvesting** - WP login form captures attacker-submitted credentials; masked passwords stored in admin-visible `CRED_HARVEST_LOG` (clearable)
+- ✅ **robots.txt honeypot** - Tempting `Disallow` paths in robots.txt lure scanners directly into TRAP_PATHS for instant ban
+- ✅ **Fake token pivot detection** - Fake credentials served in honeypot responses pre-loaded into `fakeTokens`; any `Authorization: Bearer` reuse triggers instant ban
+- ✅ **HTTP method abuse detection** - `TRACE`/`CONNECT` banned immediately; `PUT`/`DELETE`/`PATCH` on non-API paths triggers ban
+- ✅ **Hidden honeypot form field** - CSS-hidden `_void` input in login/register form; bots that auto-fill fields get instantly banned
+- ✅ **Content-type mismatch detection** - POST claiming `application/json` with unparseable body (scanner tell) triggers ban
+- ✅ **AbuseIPDB pre-check** - First-seen IPs checked against AbuseIPDB; confidence ≥ 80% → instant ban (results cached 24h)
 - ✅ **Credential stuffing detection** - Same credentials from 3+ IPs in 10 min → CRITICAL alert
 - ✅ **Smart threat alerts** - CREDENTIAL_STUFFING, BAN_EVASION, ADMIN_HONEYPOT, IP_ROTATION alerts surfaced in admin dashboard
 - ✅ **Honeypot response delays** - 300–1200ms random delay slows scanner throughput
@@ -344,6 +350,8 @@ The included `deploy.ps1` script automates deployment:
 - `DELETE /api/admin/security/alerts` - Dismiss all alerts
 - `GET /api/admin/security/honeypot-heatmap` - Top 20 trap paths by hit count
 - `GET /api/admin/security/attack-timeline` - 24h attack events by hour
+- `GET /api/admin/security/cred-harvests` - WP honeypot credential harvest log
+- `DELETE /api/admin/security/cred-harvests` - Clear credential harvest log
 
 ## Security Architecture
 
