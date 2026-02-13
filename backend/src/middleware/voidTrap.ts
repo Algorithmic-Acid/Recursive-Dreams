@@ -35,6 +35,8 @@ const TRAP_PATHS = [
   '/api/debug',
   // Explicit WordPress targets (covered by prefix but listed for clarity)
   '/wp-includes/wlwmanifest.xml', '/xmlrpc.php',
+  // robots.txt bait paths — listed in fake robots.txt to lure crawlers/scanners
+  '/wp-backup', '/admin-secret', '/database-backup', '/old', '/dev',
 ];
 
 // ─── SUSPICIOUS URL PATTERNS ───
@@ -105,6 +107,21 @@ const offenseCount = new Map<string, number>();   // total times an IP has been 
 const rateLimits   = new Map<string, RateEntry>();
 const authRateLimits = new Map<string, AuthRateEntry>();
 const trapPathCounter = new Map<string, number>(); // rotating response counter per trap path
+
+// Fake API tokens served in honeypot responses — used to detect pivot attacks
+const fakeTokens = new Set<string>([
+  'j7Kq2mR9pL4xN8vW1cH6tY3bF0sE5dA2i',             // fake APP_KEY
+  '9f8a3e2b1c4d7e6f5a0b9c8d7e6f5a4b3c2d1e0f9a8b7c', // fake JWT_SECRET
+  '51NqPmK2Ld9wXtR8cVp7aE4bF0jY6nM',                // fake Stripe key suffix
+  'Xk9#mP2qR7nL4vH!',                               // fake DB password
+  'Wm9pZFZlbmRvclBhc3N3b3Jk',                       // fake K8s db-password (base64)
+  'c2VjcmV0LWtleS12b2lkdmVuZG9y',                   // fake K8s jwt-secret (base64)
+  'c2VjcmV0LWtleS12b2lkdmVuZG9yLXByb2R1Y3Rpb24=',  // fake actuator jwt (base64)
+]);
+
+// AbuseIPDB pre-check cache — keyed by IP, stores confidence score + when cached
+const abuseIpCache = new Map<string, { score: number; cachedAt: number }>();
+const ABUSE_CACHE_TTL = 24 * 60 * 60_000; // 24 hours
 
 // ─── SMART ALERT SYSTEM ───
 export interface ThreatAlert {
@@ -218,6 +235,8 @@ setInterval(() => {
     if (now - entry.firstSeen > FP_WINDOW_MS * 2) fingerprintMap.delete(fp);
   for (const [ip, entry] of pathTracker)
     if (now - entry.windowStart > PATH_SCAN_WINDOW_MS * 5) pathTracker.delete(ip);
+  for (const [ip, entry] of abuseIpCache)
+    if (now - entry.cachedAt > ABUSE_CACHE_TTL) abuseIpCache.delete(ip);
 }, 5 * 60_000);
 
 // ─── IP EXTRACTION ───
@@ -656,6 +675,43 @@ const geoLookup = (ip: string, cb: (loc: string) => void) => {
   req.setTimeout(3000, () => { req.destroy(); cb('unknown location'); });
 };
 
+// ─── ABUSEIPDB PRE-CHECK ───
+// Queries AbuseIPDB on first request from an IP. Confidence ≥ 80 → instant ban.
+// Caches results 24h so we don't hammer the API on repeat visits from the same IP.
+const checkAbuseIPDB = (ip: string, path: string, userAgent: string) => {
+  if (abuseIpCache.has(ip)) return;
+  const apiKey = process.env.ABUSEIPDB_API_KEY;
+  if (!apiKey) return;
+  if (!VALID_IP.test(ip) || PRIVATE_IP.test(ip) || ip === 'unknown') return;
+
+  // Mark as in-flight immediately to prevent duplicate concurrent requests
+  abuseIpCache.set(ip, { score: -1, cachedAt: Date.now() });
+
+  const req = https.request({
+    hostname: 'api.abuseipdb.com',
+    path: `/api/v2/check?ipAddress=${encodeURIComponent(ip)}&maxAgeInDays=90`,
+    method: 'GET',
+    headers: { 'Key': apiKey, 'Accept': 'application/json' },
+  }, (res2) => {
+    let body = '';
+    res2.on('data', (chunk) => { body += chunk; });
+    res2.on('end', () => {
+      try {
+        const parsed = JSON.parse(body);
+        const score: number = parsed?.data?.abuseConfidenceScore ?? 0;
+        abuseIpCache.set(ip, { score, cachedAt: Date.now() });
+        if (score >= 80) {
+          console.log(`[VOID TRAP] AbuseIPDB pre-ban: ${ip} confidence ${score}%`);
+          banIP(ip, `AbuseIPDB confidence score ${score}%`, path, userAgent, ABUSE_CATEGORIES.HACKING);
+        }
+      } catch {}
+    });
+  });
+  req.on('error', () => {});
+  req.setTimeout(5000, () => { req.destroy(); });
+  req.end();
+};
+
 // ─── REPORT TO ABUSEIPDB ───
 const reportToAbuseIPDB = (ip: string, reason: string, path: string, categories: string = ABUSE_CATEGORIES.HACKING, userAgent: string = '') => {
   const apiKey = process.env.ABUSEIPDB_API_KEY;
@@ -834,6 +890,47 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
     return;
   }
 
+  // 1b. HTTP METHOD ABUSE — TRACE/CONNECT are recon tools; PUT/DELETE/PATCH on non-API paths = scanner
+  const method = req.method.toUpperCase();
+  if (method === 'TRACE' || method === 'CONNECT') {
+    banIP(ip, `HTTP method abuse: ${method}`, req.path, userAgent, ABUSE_CATEGORIES.HACKING);
+    res.status(405).send('Method Not Allowed');
+    return;
+  }
+  if ((method === 'PUT' || method === 'DELETE' || method === 'PATCH') && !path.startsWith('/api/')) {
+    banIP(ip, `HTTP method abuse: ${method} on non-API path ${req.path}`, req.path, userAgent, ABUSE_CATEGORIES.HACKING);
+    res.status(405).send('Method Not Allowed');
+    return;
+  }
+
+  // 1c. FAKE TOKEN PIVOT — attacker used a token harvested from a honeypot response
+  const authHeader = (req.headers['authorization'] || '').toString();
+  if (authHeader) {
+    const tokenMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+    if (tokenMatch) {
+      const token = tokenMatch[1].trim();
+      if (fakeTokens.has(token)) {
+        banIP(ip, `Fake token pivot: used harvested honeypot credential`, req.path, userAgent, ABUSE_CATEGORIES.HACKING);
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+    }
+  }
+
+  // 1d. CONTENT-TYPE MISMATCH — scanner claims JSON but body can't be parsed (URL-encoded or raw)
+  if ((method === 'POST' || method === 'PUT' || method === 'PATCH') && !path.startsWith('/api/auth/')) {
+    const ct = (req.headers['content-type'] || '').toLowerCase();
+    const cl = parseInt(req.headers['content-length'] || '0', 10);
+    if (cl > 0 && ct.includes('application/json') && (req.body === undefined || req.body === null)) {
+      banIP(ip, `Content-type mismatch: claimed JSON but body failed to parse`, req.path, userAgent, ABUSE_CATEGORIES.HACKING);
+      res.status(400).json({ error: 'Bad request' });
+      return;
+    }
+  }
+
+  // 1e. ABUSEIPDB PRE-CHECK — fire-and-forget reputation lookup on first-seen IPs
+  checkAbuseIPDB(ip, req.path, userAgent);
+
   // 2. SCANNER USER-AGENT - instant ban
   for (const pattern of SCANNER_UA_PATTERNS) {
     if (pattern.test(userAgent)) {
@@ -863,6 +960,13 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
 
   // 4. AUTH ENDPOINT RATE LIMITING (brute-force protection) + credential stuffing detection
   if (AUTH_PATHS.some(p => path === p || path.startsWith(p))) {
+    // Honeypot field — CSS-hidden in the real form; bots fill every field, humans never see it
+    if (req.body && req.body._void) {
+      banIP(ip, `Honeypot form field filled: automated bot detected`, req.path, userAgent, ABUSE_CATEGORIES.HACKING);
+      res.status(401).json({ error: 'Authentication failed' });
+      return;
+    }
+
     // Track credentials for stuffing detection on login attempts
     if (path.includes('login') && req.method === 'POST' && req.body) {
       const u = (req.body.email || req.body.username || '').toString().substring(0, 60);

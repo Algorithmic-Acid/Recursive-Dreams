@@ -22,3 +22,19 @@ Allow: /
 
 User-agent: DuckDuckBot
 Allow: /
+
+# -----------------------------------------------
+# The following paths contain sensitive data.
+# Access is restricted and monitored.
+# -----------------------------------------------
+Disallow: /wp-backup
+Disallow: /admin-secret
+Disallow: /database-backup
+Disallow: /old
+Disallow: /dev
+Disallow: /wp-admin
+Disallow: /wp-login.php
+Disallow: /.env
+Disallow: /config
+Disallow: /backup
+Disallow: /database

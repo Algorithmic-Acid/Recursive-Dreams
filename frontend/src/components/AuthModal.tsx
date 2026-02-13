@@ -19,6 +19,7 @@ export const AuthModal = ({ isOpen, onClose, initialMode = 'login', onSuccess }:
     name: '',
     email: '',
     password: '',
+    _void: '',
   });
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -30,7 +31,7 @@ export const AuthModal = ({ isOpen, onClose, initialMode = 'login', onSuccess }:
   useEffect(() => {
     if (isOpen) {
       setMode(initialMode);
-      setFormData({ name: '', email: '', password: '' });
+      setFormData({ name: '', email: '', password: '', _void: '' });
       setShowForgotPassword(false);
       setForgotSent(false);
       setForgotEmail('');
@@ -46,7 +47,7 @@ export const AuthModal = ({ isOpen, onClose, initialMode = 'login', onSuccess }:
     try {
       const endpoint = mode === 'login' ? '/auth/login' : '/auth/register';
       const payload = mode === 'login'
-        ? { email: formData.email, password: formData.password }
+        ? { email: formData.email, password: formData.password, _void: formData._void }
         : formData;
 
       const response = await api.post(endpoint, payload);
@@ -245,6 +246,18 @@ export const AuthModal = ({ isOpen, onClose, initialMode = 'login', onSuccess }:
                 />
               </div>
 
+              {/* Honeypot field — hidden from real users, filled by bots */}
+              <div className="absolute -left-[9999px] opacity-0 pointer-events-none" aria-hidden="true">
+                <input
+                  type="text"
+                  name="_void"
+                  value={formData._void}
+                  onChange={(e) => setFormData({ ...formData, _void: e.target.value })}
+                  tabIndex={-1}
+                  autoComplete="off"
+                />
+              </div>
+
               <button
                 type="submit"
                 disabled={loading}
@@ -273,7 +286,7 @@ export const AuthModal = ({ isOpen, onClose, initialMode = 'login', onSuccess }:
                 type="button"
                 onClick={() => {
                   setMode(mode === 'login' ? 'register' : 'login');
-                  setFormData({ name: '', email: '', password: '' });
+                  setFormData({ name: '', email: '', password: '', _void: '' });
                 }}
                 className="text-cyan-400 hover:text-cyan-300 transition text-xs sm:text-sm font-mono"
               >
