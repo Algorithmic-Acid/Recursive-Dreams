@@ -85,7 +85,8 @@ A full-stack e-commerce platform for VST plugins with cyberpunk aesthetics. Feat
 - ✅ **Honeypot traps** - 50+ paths; catches WordPress/PHP/k8s/git/dependency scanners
 - ✅ **Scanner UA blocking** - 20+ known tools (sqlmap, nikto, nuclei, gobuster...)
 - ✅ **Deceptive responses** - Fake `.env`, WordPress login, phpMyAdmin, Kubernetes API, `.git/config`, `package.json`, GraphQL introspection, XML-RPC, debug config
-- ✅ **Deception layering** - 15% of honeypot hits return `503` to simulate server crash; 6 trap paths issue infinite 302 redirect loops to waste scanner threads
+- ✅ **Deception layering** - 15% of honeypot hits return `503`; rotating status codes (403→404→401→200) per path confuse scanners; 6 trap paths issue infinite 302 redirect loops
+- ✅ **Fake credential success** - 30% of WP login POST attempts receive a fake `302 → /wp-admin/` with a bogus auth cookie, sending the attacker on a futile rabbit-hole
 - ✅ **Credential harvesting** - WP login form captures attacker-submitted credentials
 - ✅ **Credential stuffing detection** - Same credentials from 3+ IPs in 10 min → CRITICAL alert
 - ✅ **Smart threat alerts** - CREDENTIAL_STUFFING, BAN_EVASION, ADMIN_HONEYPOT, IP_ROTATION alerts surfaced in admin dashboard
@@ -358,9 +359,12 @@ Requests pass through 11 checks in order:
 5. **Low-and-slow scanner detection** — Bans IPs that visit >40 distinct paths in 2 minutes
 6. **IP rotation / fingerprint detection** — Same tool fingerprint from 8+ IPs → ban + IP_ROTATION alert
 7a. **Redirect loop traps** — 6 paths cycle infinite 302 redirects (e.g. `/wp-admin/setup-config.php` ↔ `/wp-admin/install.php`) to freeze scanner threads
-7b. **Honeypot paths** — 50+ trap paths return convincing fake responses (300–1200ms delay, 15% chance `503`):
+7b. **Honeypot paths** — 50+ trap paths return convincing fake responses with:
+   - 300–1200ms delay to slow scanner throughput
+   - 15% chance `503 Service Unavailable` (simulates server crash)
+   - Rotating status codes per path: `403 Forbidden` → `404 Not Found` → `401 Unauthorized` → normal response → repeat (prevents fingerprinting)
    - `/.env` → Fake credentials file (Stripe keys, DB password, JWT secret)
-   - `/wp-login.php` → Fake WordPress login (logs any credentials submitted)
+   - `/wp-login.php` → Fake WordPress login (logs credentials; **30% of POSTs return fake `302 + auth cookie`** to create a rabbit-hole)
    - `/phpmyadmin` → Fake phpMyAdmin interface
    - `/api/v1/pods` → Fake Kubernetes API JSON
    - `/actuator/env` → Fake Spring Boot actuator response

@@ -69,7 +69,8 @@ Express Middleware Chain (server.ts)
   │     ├─ Low-and-slow scanner detection (>40 paths/2min)
   │     ├─ IP rotation fingerprint detection (no accept-language, 8+ IPs) + IP_ROTATION alert
   │     ├─ Redirect loop deception (6 trap paths cycle 302 redirects forever)
-  │     ├─ Honeypot path detection → deceptive response (300–1200ms delay, 15% chance 503) + ban
+  │     ├─ Honeypot path detection → rotating status codes (403→404→401→200 per path) + 15% 503 + ban
+  │     ├─ Fake WP credential success (30% of POST /wp-login.php → fake 302 + auth cookie)
   │     ├─ URL pattern scanning (SQLi, path traversal, bad extensions)
   │     ├─ POST body scanning (SQLi, XSS, SSTI, cmd injection)
   │     └─ Oversized payload blocking (5MB)
@@ -154,7 +155,7 @@ backend/src/
 
 **Deceptive honeypot responses by path:**
 - `/.env` → Fake credentials file (Stripe keys, DB password, JWT secret)
-- `/wp-login.php`, `/wp-admin` → Fake WordPress login (harvests submitted credentials)
+- `/wp-login.php`, `/wp-admin` → Fake WordPress login (harvests submitted credentials; 30% of POST attempts return fake `302 → /wp-admin/` with bogus auth cookie to waste attacker time)
 - `/phpmyadmin`, `/pma` → Fake phpMyAdmin interface
 - `/api/v1/pods` → Fake Kubernetes API JSON
 - `/actuator/env` → Fake Spring Boot actuator response
@@ -166,7 +167,10 @@ backend/src/
 - `/api/debug`, `/debug` → Fake debug config dump with fake credentials
 - All other honeypot paths → Glitch screen with fake error dump
 
-All honeypot responses include a 300–1200ms random delay to slow scanner throughput. Additionally, 15% of honeypot hits return a `503 Service Temporarily Unavailable` with a randomized `Retry-After` header to make scanners believe the server has crashed.
+All honeypot responses include a 300–1200ms random delay to slow scanner throughput. Additionally:
+- **15% chance**: `503 Service Temporarily Unavailable` with randomized `Retry-After` (makes scanner think server crashed)
+- **Rotating status codes** (`trapPathCounter` Map): each trap path cycles through four response modes globally — `403 Forbidden`, `404 Not Found`, `401 Unauthorized` (with `WWW-Authenticate: Basic` header), then normal deceptive response — so different scanners probing the same path see different results and cannot fingerprint which response means "real endpoint"
+- **Fake credential success**: 30% of POST attempts to `/wp-login.php` return a `302` redirect to `/wp-admin/` with a convincing but bogus `wordpress_logged_in_xxx` cookie, sending the attacker on a futile rabbit-hole trying to use it
 
 **Redirect loop deception** (`REDIRECT_CYCLE`): Six trap paths cycle infinite 302 redirects between pairs, wasting scanner threads:
 - `/wp-admin/setup-config.php` ↔ `/wp-admin/install.php`
@@ -214,6 +218,7 @@ VoidTrap [cats]: [offense #N → Xh] reason | ip: 1.2.3.4 | loc: City, Region, C
 - `credentialMap` Map — tracks credential attempts per IP across IPs (flags stuffing attacks)
 - `alerts` Array — up to 100 smart alerts (CREDENTIAL_STUFFING, BAN_EVASION, ADMIN_HONEYPOT, IP_ROTATION)
 - `BannedIP.location` — geo string stored on each ban entry (city, region, country, ISP via ipinfo.io)
+- `trapPathCounter` Map — global hit counter per trap path; drives rotating status code responses
 - All exposed via dedicated admin API endpoints with dismiss support
 
 **requestLogger** (`requestLogger.ts`):

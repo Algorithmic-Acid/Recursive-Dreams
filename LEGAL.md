@@ -22,7 +22,8 @@ VoidTrap is a server-side middleware layer that protects Void Vendor's infrastru
 
 **Response mechanisms:**
 - **Honeypot paths**: Fake but convincing responses (`.env`, `wp-login.php`, phpMyAdmin, Kubernetes API, etc.) that attract and identify automated scanners
-- **Deception layering**: 15% of honeypot hits return a `503 Service Temporarily Unavailable` to make scanners believe the server has crashed; certain trap paths issue infinite 302 redirect cycles to waste scanner threads
+- **Deception layering**: 15% of honeypot hits return `503 Service Temporarily Unavailable`; trap paths cycle rotating status codes (403, 404, 401, 200) so automated scanners cannot fingerprint valid endpoints; certain trap paths issue infinite 302 redirect cycles to waste scanner threads
+- **Fake credential success**: 30% of POST attempts to the WordPress login honeypot receive a fabricated `302` redirect with a bogus authentication cookie, inducing the attacker to waste time attempting to use a non-functional token against real endpoints
 - **Credential harvesting from attackers**: WordPress login form captures credentials submitted by attackers — this data is stored for security analysis only and is never used to access third-party systems
 - **Slow-drip tarpit**: Banned connections are held open (1 byte/3 seconds, max 10 minutes) to exhaust scanner connection pools — this is a passive resource consumption technique applied only to already-banned IPs
 - **Smart alerting**: Automated detection of credential stuffing attacks, ban evasion attempts, IP rotation campaigns, and admin IP anomalies — alerts are surfaced in the admin dashboard for human review
@@ -43,7 +44,9 @@ All active defense measures are applied only to traffic that first contacts **ou
 
 **Tarpitting is lawful.** Deliberately slowing responses to already-banned IPs to waste attacker resources is a passive defensive technique applied to traffic already directed at our servers. This is analogous to a firewall DROP rule with added friction.
 
-**Deceptive responses are lawful.** Serving `503` errors or redirect loops to scanners probing our own infrastructure is a well-established defensive technique (analogous to a firewall sending TCP RST or ICMP port unreachable). We are not misrepresenting anything to good-faith users — these responses only trigger in response to requests for paths that no legitimate user would access.
+**Deceptive responses are lawful.** Serving `503` errors, redirect loops, or rotating status codes to scanners probing our own infrastructure is a well-established defensive technique (analogous to a firewall sending TCP RST or ICMP port unreachable). We are not misrepresenting anything to good-faith users — these responses only trigger in response to requests for paths that no legitimate user would access.
+
+**Fake credential success responses are lawful.** Returning a fabricated authentication response (fake cookie, fake redirect) to an attacker who has already submitted credentials to a honeypot endpoint on our own infrastructure constitutes counter-deception against an already-identified hostile actor. No legitimate user submits credentials to `/wp-login.php` on a non-WordPress site. The fake token is inert and cannot be used to access any real resource.
 
 **AbuseIPDB reporting** is performed in good faith under their [Terms of Service](https://www.abuseipdb.com/terms). We report only IPs that have demonstrated hostile behavior against our infrastructure. Reports include category codes, attacker IP, geo location, user agent, and the path that triggered the ban. voidvendor.com is a registered webmaster on AbuseIPDB.
 

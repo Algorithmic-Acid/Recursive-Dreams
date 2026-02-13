@@ -104,6 +104,7 @@ const blacklist    = new Map<string, BannedIP>();
 const offenseCount = new Map<string, number>();   // total times an IP has been banned (persists across restarts)
 const rateLimits   = new Map<string, RateEntry>();
 const authRateLimits = new Map<string, AuthRateEntry>();
+const trapPathCounter = new Map<string, number>(); // rotating response counter per trap path
 
 // ─── SMART ALERT SYSTEM ───
 export interface ThreatAlert {
@@ -321,7 +322,7 @@ const getDeceptiveResponse = (
   ip: string,
   userAgent: string,
   query: Record<string, any> = {}
-): { contentType: string; status: number; content: string } | null => {
+): { contentType: string; status: number; content: string; headers?: Record<string, string> } | null => {
   const p = path.toLowerCase();
 
   // Fake .env file with convincing-looking fake credentials
@@ -369,6 +370,20 @@ const getDeceptiveResponse = (
           [`wp_login: ${username}`, ip, userAgent.substring(0, 200)]
         ).catch(() => {});
         trackCredentialAttempt(ip, username, password);
+      }
+      // 30% chance: fake credential success — attacker wastes time using a bogus auth cookie
+      if (Math.random() < 0.30) {
+        const fakeToken  = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+        const fakeCookie = `wordpress_logged_in_${Math.random().toString(16).slice(2, 10)}=${username || 'admin'}%7C${Date.now()}%7C${fakeToken}; path=/; HttpOnly`;
+        return {
+          contentType: 'text/html',
+          status: 302,
+          headers: {
+            'Location': '/wp-admin/',
+            'Set-Cookie': fakeCookie,
+          },
+          content: '',
+        };
       }
       return {
         contentType: 'text/html',
@@ -951,10 +966,39 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
         return res.status(503).send('Service Temporarily Unavailable');
       }
 
+      // ─── ROTATING STATUS CODES ───
+      // Cycles 200 → 403 → 404 → 401 per path so scanners can't fingerprint responses
+      const trapHit = (trapPathCounter.get(path) ?? 0) + 1;
+      trapPathCounter.set(path, trapHit);
+      const rotationSlot = trapHit % 4;
+
+      if (rotationSlot === 1) {
+        // 403 Forbidden — looks like real auth barrier
+        return res.status(403).setHeader('Content-Type', 'text/html').send(
+          '<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body><h1>Forbidden</h1><p>You don\'t have permission to access this resource.</p></body></html>'
+        );
+      }
+      if (rotationSlot === 2) {
+        // 404 Not Found — makes scanner unsure if path exists at all
+        return res.status(404).setHeader('Content-Type', 'text/html').send(
+          '<!DOCTYPE html><html><head><title>404 Not Found</title></head><body><h1>Not Found</h1><p>The requested URL was not found on this server.</p></body></html>'
+        );
+      }
+      if (rotationSlot === 3) {
+        // 401 Unauthorized — looks like auth-gated real endpoint
+        res.setHeader('WWW-Authenticate', 'Basic realm="Restricted Area"');
+        return res.status(401).setHeader('Content-Type', 'text/html').send(
+          '<!DOCTYPE html><html><head><title>401 Unauthorized</title></head><body><h1>Authorization Required</h1><p>This server could not verify that you are authorized to access the document requested.</p></body></html>'
+        );
+      }
+
+      // rotationSlot === 0: serve the real deceptive response
       if (deceptive) {
-        res.status(deceptive.status)
-          .setHeader('Content-Type', deceptive.contentType)
-          .send(deceptive.content);
+        res.status(deceptive.status).setHeader('Content-Type', deceptive.contentType);
+        if (deceptive.headers) {
+          for (const [k, v] of Object.entries(deceptive.headers)) res.setHeader(k, v);
+        }
+        res.send(deceptive.content);
       } else {
         // Default glitch screen
         res.status(200).send(`<pre>
