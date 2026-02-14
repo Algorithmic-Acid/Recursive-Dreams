@@ -1,9 +1,36 @@
 import express, { Request, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { protect, admin } from '../middleware/auth';
 import { db } from '../config/postgres';
 import { ApiResponse } from '../types';
+import ProductRepository from '../repositories/ProductRepository';
 import { getRequestLogs, getLogStats, clearRequestLogs } from '../middleware/requestLogger';
 import { getBlacklistStatus, manualBan, manualUnban, getAlerts, dismissAlert, dismissAllAlerts, getCredHarvests, clearCredHarvests } from '../middleware/voidTrap';
+
+// ─── AUDIO PREVIEW UPLOAD ───
+const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/home/wes/voidvendor-uploads/previews';
+
+const audioStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, PREVIEWS_DIR),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}${path.extname(file.originalname)}`);
+  },
+});
+
+const audioUpload = multer({
+  storage: audioStorage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only audio files are allowed'));
+    }
+  },
+});
 
 const router = express.Router();
 
@@ -1152,6 +1179,286 @@ router.get('/security/cred-harvests', protect, admin, (_req: Request, res: Respo
 router.delete('/security/cred-harvests', protect, admin, (_req: Request, res: Response) => {
   const count = clearCredHarvests();
   res.json({ success: true, message: `Cleared ${count} credential harvest entries` });
+});
+
+// ============================================
+// PRODUCT MANAGEMENT (admin)
+// ============================================
+
+// List all products (including inactive) with all fields
+router.get('/products', async (req: Request, res: Response) => {
+  try {
+    const result = await db.query(
+      `SELECT id, name, slug, category, product_type, price, description, icon,
+              image_url, is_active, stock_quantity, download_url, file_size_mb,
+              metadata, preview_url, license_type, created_at, updated_at
+       FROM products
+       ORDER BY created_at DESC`
+    );
+    res.json({ success: true, data: result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      category: row.category,
+      productType: row.product_type,
+      price: parseFloat(row.price),
+      description: row.description,
+      icon: row.icon,
+      imageUrl: row.image_url,
+      isActive: row.is_active,
+      stock: row.stock_quantity,
+      downloadUrl: row.download_url,
+      fileSizeMb: row.file_size_mb,
+      metadata: row.metadata,
+      previewUrl: row.preview_url,
+      licenseType: row.license_type,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to fetch products' });
+  }
+});
+
+// Create a product
+router.post('/products', async (req: Request, res: Response) => {
+  try {
+    const { name, category, productType, price, description, icon, imageUrl,
+            stock, downloadUrl, fileSizeMb, licenseType, metadata } = req.body;
+
+    if (!name || !category || price === undefined) {
+      return res.status(400).json({ success: false, error: 'name, category, and price are required' });
+    }
+
+    const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const result = await db.query(
+      `INSERT INTO products (name, slug, category, product_type, price, description, icon,
+         image_url, stock_quantity, low_stock_threshold, download_url, file_size_mb,
+         license_type, metadata)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,10,$10,$11,$12,$13)
+       RETURNING *`,
+      [
+        name, slug, category, productType || 'digital', price,
+        description || '', icon || '📦', imageUrl || null,
+        stock !== undefined ? stock : (productType === 'digital' ? 99999 : 0),
+        downloadUrl || null, fileSizeMb || null,
+        licenseType || 'royalty-free', JSON.stringify(metadata || {}),
+      ]
+    );
+    res.status(201).json({ success: true, data: result.rows[0], message: 'Product created' });
+  } catch (error: any) {
+    console.error('Create product error:', error);
+    res.status(500).json({ success: false, error: 'Failed to create product' });
+  }
+});
+
+// Update a product (all fields including license_type, metadata for bpm/key)
+router.put('/products/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const updates: string[] = [];
+    const values: any[] = [];
+    let p = 1;
+
+    const fields: Record<string, string> = {
+      name: 'name', category: 'category', price: 'price',
+      description: 'description', icon: 'icon', imageUrl: 'image_url',
+      stock: 'stock_quantity', downloadUrl: 'download_url', fileSizeMb: 'file_size_mb',
+      licenseType: 'license_type', productType: 'product_type', isActive: 'is_active',
+    };
+
+    for (const [key, col] of Object.entries(fields)) {
+      if (req.body[key] !== undefined) {
+        updates.push(`${col} = $${p++}`);
+        values.push(req.body[key]);
+      }
+    }
+
+    // Merge metadata (bpm, musical_key, pricing_variants, etc.)
+    if (req.body.metadata !== undefined) {
+      updates.push(`metadata = $${p++}`);
+      values.push(JSON.stringify(req.body.metadata));
+    }
+
+    if (req.body.name !== undefined) {
+      updates.push(`slug = $${p++}`);
+      values.push(req.body.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, error: 'No fields to update' });
+    }
+
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+
+    const result = await db.query(
+      `UPDATE products SET ${updates.join(', ')} WHERE id = $${p} RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Product not found' });
+    }
+    res.json({ success: true, data: result.rows[0], message: 'Product updated' });
+  } catch (error: any) {
+    console.error('Update product error:', error);
+    res.status(500).json({ success: false, error: 'Failed to update product' });
+  }
+});
+
+// Upload audio preview for a product
+router.post('/products/:id/preview', (req: Request, res: Response) => {
+  audioUpload.single('preview')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No audio file uploaded' });
+    }
+
+    const { id } = req.params;
+    const previewUrl = `/uploads/previews/${req.file.filename}`;
+
+    try {
+      // Delete old preview file if one existed
+      const existing = await db.query('SELECT preview_url FROM products WHERE id = $1', [id]);
+      if (existing.rows.length > 0 && existing.rows[0].preview_url) {
+        const oldFile = path.join(PREVIEWS_DIR, path.basename(existing.rows[0].preview_url));
+        if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+      }
+
+      await db.query('UPDATE products SET preview_url = $1, updated_at = NOW() WHERE id = $2', [previewUrl, id]);
+      res.json({ success: true, data: { previewUrl }, message: 'Preview uploaded' });
+    } catch (error: any) {
+      fs.unlinkSync(req.file.path);
+      res.status(500).json({ success: false, error: 'Failed to save preview URL' });
+    }
+  });
+});
+
+// Delete audio preview for a product
+router.delete('/products/:id/preview', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query('SELECT preview_url FROM products WHERE id = $1', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Product not found' });
+    }
+
+    const previewUrl = result.rows[0].preview_url;
+    if (previewUrl) {
+      const filePath = path.join(PREVIEWS_DIR, path.basename(previewUrl));
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+
+    await db.query('UPDATE products SET preview_url = NULL, updated_at = NOW() WHERE id = $1', [id]);
+    res.json({ success: true, message: 'Preview deleted' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to delete preview' });
+  }
+});
+
+// ============================================
+// PROMO CODES (admin)
+// ============================================
+
+router.get('/promo', async (_req: Request, res: Response) => {
+  try {
+    const result = await db.query(
+      `SELECT id, code, discount_type, discount_value, max_uses, used_count,
+              expires_at, is_active, created_at
+       FROM promo_codes ORDER BY created_at DESC`
+    );
+    res.json({ success: true, data: result.rows.map(r => ({
+      id: r.id, code: r.code, discountType: r.discount_type,
+      discountValue: parseFloat(r.discount_value), maxUses: r.max_uses,
+      usedCount: r.used_count, expiresAt: r.expires_at,
+      isActive: r.is_active, createdAt: r.created_at,
+    })) });
+  } catch {
+    res.status(500).json({ success: false, error: 'Failed to fetch promo codes' });
+  }
+});
+
+router.post('/promo', async (req: Request, res: Response) => {
+  try {
+    const { code, discountType, discountValue, maxUses, expiresAt } = req.body;
+    if (!code || !discountType || discountValue === undefined) {
+      return res.status(400).json({ success: false, error: 'code, discountType, and discountValue are required' });
+    }
+    if (!['percent', 'fixed'].includes(discountType)) {
+      return res.status(400).json({ success: false, error: 'discountType must be percent or fixed' });
+    }
+    const result = await db.query(
+      `INSERT INTO promo_codes (code, discount_type, discount_value, max_uses, expires_at)
+       VALUES (UPPER($1), $2, $3, $4, $5) RETURNING *`,
+      [code, discountType, discountValue, maxUses || null, expiresAt || null]
+    );
+    const r = result.rows[0];
+    res.status(201).json({ success: true, data: {
+      id: r.id, code: r.code, discountType: r.discount_type,
+      discountValue: parseFloat(r.discount_value), maxUses: r.max_uses,
+      usedCount: r.used_count, expiresAt: r.expires_at,
+      isActive: r.is_active, createdAt: r.created_at,
+    }, message: 'Promo code created' });
+  } catch (error: any) {
+    if (error.code === '23505') {
+      return res.status(400).json({ success: false, error: 'Promo code already exists' });
+    }
+    res.status(500).json({ success: false, error: 'Failed to create promo code' });
+  }
+});
+
+router.put('/promo/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { code, discountType, discountValue, maxUses, expiresAt, isActive } = req.body;
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let p = 1;
+
+    if (code !== undefined) { updates.push(`code = UPPER($${p++})`); values.push(code); }
+    if (discountType !== undefined) { updates.push(`discount_type = $${p++}`); values.push(discountType); }
+    if (discountValue !== undefined) { updates.push(`discount_value = $${p++}`); values.push(discountValue); }
+    if (maxUses !== undefined) { updates.push(`max_uses = $${p++}`); values.push(maxUses); }
+    if (expiresAt !== undefined) { updates.push(`expires_at = $${p++}`); values.push(expiresAt); }
+    if (isActive !== undefined) { updates.push(`is_active = $${p++}`); values.push(isActive); }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, error: 'No fields to update' });
+    }
+    values.push(id);
+
+    const result = await db.query(
+      `UPDATE promo_codes SET ${updates.join(', ')} WHERE id = $${p} RETURNING *`,
+      values
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Promo code not found' });
+    }
+    const r = result.rows[0];
+    res.json({ success: true, data: {
+      id: r.id, code: r.code, discountType: r.discount_type,
+      discountValue: parseFloat(r.discount_value), maxUses: r.max_uses,
+      usedCount: r.used_count, expiresAt: r.expires_at, isActive: r.is_active,
+    }, message: 'Promo code updated' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to update promo code' });
+  }
+});
+
+router.delete('/promo/:id', async (req: Request, res: Response) => {
+  try {
+    const result = await db.query('DELETE FROM promo_codes WHERE id = $1 RETURNING code', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Promo code not found' });
+    }
+    res.json({ success: true, message: `Promo code "${result.rows[0].code}" deleted` });
+  } catch {
+    res.status(500).json({ success: false, error: 'Failed to delete promo code' });
+  }
 });
 
 export default router;

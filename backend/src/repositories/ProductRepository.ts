@@ -24,6 +24,8 @@ export interface ProductRow {
   supplier_sku: string | null;
   cost_price: string | null;
   metadata: any;
+  preview_url: string | null;
+  license_type: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -48,6 +50,9 @@ class ProductRepository {
       download_url: row.download_url || undefined,
       file_size_mb: row.file_size_mb ? parseFloat(row.file_size_mb) : undefined,
       pricing_variants: pricingVariants,
+      preview_url: row.preview_url || undefined,
+      license_type: row.license_type || undefined,
+      metadata: row.metadata || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -167,6 +172,31 @@ class ProductRepository {
     if (productData.image !== undefined) {
       updates.push(`image_url = $${paramCount++}`);
       values.push(productData.image);
+    }
+
+    if ((productData as any).preview_url !== undefined) {
+      updates.push(`preview_url = $${paramCount++}`);
+      values.push((productData as any).preview_url);
+    }
+
+    if ((productData as any).license_type !== undefined) {
+      updates.push(`license_type = $${paramCount++}`);
+      values.push((productData as any).license_type);
+    }
+
+    if ((productData as any).metadata !== undefined) {
+      updates.push(`metadata = $${paramCount++}`);
+      values.push(JSON.stringify((productData as any).metadata));
+    }
+
+    if ((productData as any).product_type !== undefined) {
+      updates.push(`product_type = $${paramCount++}`);
+      values.push((productData as any).product_type);
+    }
+
+    if ((productData as any).download_url !== undefined) {
+      updates.push(`download_url = $${paramCount++}`);
+      values.push((productData as any).download_url);
     }
 
     if (updates.length === 0) {

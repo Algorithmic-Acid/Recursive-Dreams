@@ -4,6 +4,7 @@ export interface PaymentIntentResponse {
   clientSecret: string;
   paymentIntentId: string;
   amount: number;
+  discountAmount?: number;
 }
 
 export interface PaymentItem {
@@ -21,11 +22,12 @@ export const paymentAPI = {
 
   createPaymentIntent: async (
     items: PaymentItem[],
-    token: string
+    token: string,
+    promoCode?: string
   ): Promise<PaymentIntentResponse> => {
     const response = await api.post(
       '/payments/create-intent',
-      { items },
+      { items, ...(promoCode ? { promoCode } : {}) },
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -56,11 +58,12 @@ export const paymentAPI = {
     items: { productId: string; quantity: number }[],
     cryptoType: 'xmr' | 'btc',
     shippingAddress: any,
-    token: string
+    token: string,
+    promoCode?: string
   ) => {
     const response = await api.post(
       '/payments/crypto/create',
-      { items, cryptoType, shippingAddress },
+      { items, cryptoType, shippingAddress, ...(promoCode ? { promoCode } : {}) },
       { headers: { Authorization: `Bearer ${token}` } }
     );
     return response.data.data;

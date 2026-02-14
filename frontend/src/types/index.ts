@@ -20,10 +20,14 @@ export interface Product {
   file_size_mb?: number;
   pricing_variants?: PricingVariant[];
   download_file?: string;
+  preview_url?: string;
+  license_type?: string;
   metadata?: {
     download_file?: string;
     is_downloadable?: boolean;
     pricing_variants?: PricingVariant[];
+    bpm?: number;
+    musical_key?: string;
   };
 }
 

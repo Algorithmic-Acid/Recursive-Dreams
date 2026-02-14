@@ -19,6 +19,12 @@ export interface IProduct {
   download_url?: string;
   file_size_mb?: number;
   pricing_variants?: PricingVariant[];
+  preview_url?: string;
+  license_type?: string;
+  metadata?: Record<string, any>;
+  product_type?: string;
+  is_active?: boolean;
+  image_url?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }

@@ -1,9 +1,17 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingCart, Download, Heart, Skull } from 'lucide-react';
+import { ShoppingCart, Download, Heart, Skull, Play } from 'lucide-react';
 import { Product, PricingVariant } from '../types';
 import { useCartStore } from '../store/cartStore';
+import { AudioPlayer } from './AudioPlayer';
 import toast from 'react-hot-toast';
+
+const LICENSE_COLORS: Record<string, string> = {
+  'royalty-free': 'text-green-400 border-green-500/30 bg-green-500/10',
+  'commercial': 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10',
+  'personal': 'text-purple-400 border-purple-500/30 bg-purple-500/10',
+  'exclusive': 'text-pink-400 border-pink-500/30 bg-pink-500/10',
+};
 
 // Helper to generate product slug from name
 const getProductSlug = (name: string) => {
@@ -20,6 +28,11 @@ export const ProductCard = ({ product }: ProductCardProps) => {
   const [selectedVariant, setSelectedVariant] = useState<PricingVariant | undefined>(
     hasVariants ? product.pricing_variants![0] : undefined
   );
+  const [showPreview, setShowPreview] = useState(false);
+
+  const bpm = product.metadata?.bpm;
+  const musicalKey = product.metadata?.musical_key;
+  const licenseColor = product.license_type ? (LICENSE_COLORS[product.license_type] || 'text-white/50 border-white/20 bg-white/5') : null;
 
   const handleAddToCart = () => {
     addItem(product, selectedVariant);
@@ -47,25 +60,66 @@ export const ProductCard = ({ product }: ProductCardProps) => {
       )}
 
       {/* Clickable Product Icon/Image */}
-      <Link to={`/product/${getProductSlug(product.name)}`} className="block">
-        <div className="h-40 sm:h-48 md:h-56 lg:h-64 bg-gradient-to-br from-cyan-900/50 via-purple-900/50 to-pink-900/50 flex items-center justify-center text-5xl sm:text-6xl md:text-7xl lg:text-8xl cursor-pointer hover:from-cyan-900/70 hover:via-purple-900/70 hover:to-pink-900/70 transition-all">
-          {product.icon}
+      <div className="relative">
+        <Link to={`/product/${getProductSlug(product.name)}`} className="block">
+          <div className="h-40 sm:h-48 md:h-56 lg:h-64 bg-gradient-to-br from-cyan-900/50 via-purple-900/50 to-pink-900/50 flex items-center justify-center text-5xl sm:text-6xl md:text-7xl lg:text-8xl cursor-pointer hover:from-cyan-900/70 hover:via-purple-900/70 hover:to-pink-900/70 transition-all">
+            {product.icon}
+          </div>
+        </Link>
+        {/* Audio preview button */}
+        {product.preview_url && (
+          <button
+            type="button"
+            onClick={() => setShowPreview(v => !v)}
+            className="absolute top-2 left-2 w-8 h-8 rounded-full bg-black/70 border border-cyan-500/50 flex items-center justify-center hover:bg-cyan-500/20 transition-all hover:shadow-[0_0_8px_rgba(0,255,255,0.4)] z-10"
+            title="Preview audio"
+          >
+            <Play className="w-3.5 h-3.5 text-cyan-400 ml-0.5" />
+          </button>
+        )}
+      </div>
+      {/* Inline audio preview player */}
+      {product.preview_url && showPreview && (
+        <div className="px-3 pt-2 pb-0">
+          <AudioPlayer src={product.preview_url} label="Preview" />
         </div>
-      </Link>
+      )}
 
       {/* Product Info */}
       <div className="p-3 sm:p-4 md:p-5 lg:p-6">
-        <div className="text-[10px] sm:text-xs text-cyan-400 uppercase font-bold mb-1 sm:mb-2 tracking-wider">
-          {product.category.replace('_', ' ')}
+        <div className="flex flex-wrap items-center gap-1.5 mb-1 sm:mb-2">
+          <span className="text-[10px] sm:text-xs text-cyan-400 uppercase font-bold tracking-wider">
+            {product.category.replace('_', ' ')}
+          </span>
+          {product.license_type && licenseColor && (
+            <span className={`text-[9px] sm:text-[10px] uppercase font-mono px-1.5 py-0.5 border rounded tracking-wider ${licenseColor}`}>
+              {product.license_type}
+            </span>
+          )}
         </div>
         <Link to={`/product/${getProductSlug(product.name)}`} className="block">
           <h3 className="text-sm sm:text-base md:text-lg lg:text-xl font-bold text-white mb-1 sm:mb-2 line-clamp-1 hover:text-cyan-400 transition-colors cursor-pointer">
             {product.name}
           </h3>
         </Link>
-        <p className="text-white/70 text-xs sm:text-sm mb-3 sm:mb-4 line-clamp-2">
+        <p className="text-white/70 text-xs sm:text-sm mb-2 line-clamp-2">
           {product.description}
         </p>
+        {/* BPM / Key tags */}
+        {(bpm || musicalKey) && (
+          <div className="flex gap-1.5 mb-3 sm:mb-4 flex-wrap">
+            {bpm && (
+              <span className="text-[9px] sm:text-[10px] font-mono px-1.5 py-0.5 bg-purple-500/10 border border-purple-500/30 text-purple-400 rounded">
+                {bpm} BPM
+              </span>
+            )}
+            {musicalKey && (
+              <span className="text-[9px] sm:text-[10px] font-mono px-1.5 py-0.5 bg-pink-500/10 border border-pink-500/30 text-pink-400 rounded">
+                {musicalKey}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Pricing Variant Selection */}
         {hasVariants && (

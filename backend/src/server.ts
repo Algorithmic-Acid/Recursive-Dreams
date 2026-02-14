@@ -18,6 +18,7 @@ import paymentRoutes from './routes/payments';
 import downloadRoutes from './routes/downloads';
 import blogRoutes from './routes/blog';
 import profileRoutes from './routes/profile';
+import promoRoutes from './routes/promo';
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
@@ -87,6 +88,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/downloads', downloadRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/promo', promoRoutes);
 
 // Avatar uploads - serve profile pictures
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/home/wes/voidvendor-uploads/avatars';
@@ -94,6 +96,14 @@ app.use('/uploads/avatars', express.static(UPLOADS_DIR, {
   dotfiles: 'deny',
   index: false,
   maxAge: '7d',
+}));
+
+// Audio previews - serve product preview clips
+const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/home/wes/voidvendor-uploads/previews';
+app.use('/uploads/previews', express.static(PREVIEWS_DIR, {
+  dotfiles: 'deny',
+  index: false,
+  maxAge: '1d',
 }));
 
 // Public Downloads - "Steal It" button files (AFTER requestLogger for tracking)

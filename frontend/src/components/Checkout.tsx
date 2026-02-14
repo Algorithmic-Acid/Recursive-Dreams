@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, CreditCard, Lock, Download, CheckCircle, AlertCircle, Copy } from 'lucide-react';
+import { X, CreditCard, Lock, Download, CheckCircle, AlertCircle, Copy, Tag } from 'lucide-react';
 import { loadStripe, Stripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -11,6 +11,7 @@ import { useCartStore } from '../store/cartStore';
 import { useAuthStore } from '../store/authStore';
 import { orderAPI } from '../services/orderApi';
 import { paymentAPI } from '../services/paymentApi';
+import { promoAPI, PromoValidateResult } from '../services/api';
 import { ShippingAddress } from '../types/order';
 import toast from 'react-hot-toast';
 import { CryptoConverter } from './CryptoConverter';
@@ -71,6 +72,11 @@ const CheckoutForm = ({ onClose }: { onClose: () => void }) => {
   const [purchasedItems, setPurchasedItems] = useState<PurchasedItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'crypto'>('card');
 
+  // Promo code state
+  const [promoInput, setPromoInput] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [appliedPromo, setAppliedPromo] = useState<PromoValidateResult | null>(null);
+
   // Crypto payment state
   const [cryptoPaymentId, setCryptoPaymentId] = useState<string | null>(null);
   const [cryptoStatus, setCryptoStatus] = useState<'idle' | 'awaiting_tx' | 'confirming' | 'confirmed'>('idle');
@@ -125,7 +131,8 @@ const CheckoutForm = ({ onClose }: { onClose: () => void }) => {
         paymentItems,
         selectedCrypto,
         shippingAddress,
-        token
+        token,
+        appliedPromo?.valid ? appliedPromo.code : undefined
       );
 
       setCryptoPaymentId(result.paymentId);
@@ -204,6 +211,25 @@ const CheckoutForm = ({ onClose }: { onClose: () => void }) => {
     toast.success('Payment confirmed! Your downloads are ready.');
   };
 
+  const applyPromo = async () => {
+    if (!promoInput.trim()) return;
+    setPromoLoading(true);
+    try {
+      const result = await promoAPI.validate(promoInput.trim(), getTotal());
+      if (result.valid) {
+        setAppliedPromo(result);
+        toast.success(`Promo applied: -$${result.discountAmount?.toFixed(2)}`);
+      } else {
+        setAppliedPromo(null);
+        toast.error(result.error || 'Invalid promo code');
+      }
+    } catch {
+      toast.error('Failed to validate promo code');
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -231,7 +257,8 @@ const CheckoutForm = ({ onClose }: { onClose: () => void }) => {
 
       const { clientSecret } = await paymentAPI.createPaymentIntent(
         paymentItems,
-        token
+        token,
+        appliedPromo?.valid ? appliedPromo.code : undefined
       );
 
       // Confirm payment with Stripe
@@ -388,12 +415,57 @@ const CheckoutForm = ({ onClose }: { onClose: () => void }) => {
             );
           })}
         </div>
+        {/* Discount line */}
+        {appliedPromo?.valid && appliedPromo.discountAmount && (
+          <div className="mt-2 flex justify-between text-sm">
+            <span className="text-green-400 flex items-center gap-1">
+              <Tag className="w-3 h-3" /> {appliedPromo.code}
+            </span>
+            <span className="text-green-400">-${appliedPromo.discountAmount.toFixed(2)}</span>
+          </div>
+        )}
         <div className="mt-3 pt-3 border-t border-white/10 flex justify-between">
           <span className="text-white font-bold">Total:</span>
-          <span className="text-green-400 font-bold text-xl">
-            ${getTotal().toFixed(2)}
-          </span>
+          <div className="text-right">
+            {appliedPromo?.valid && appliedPromo.discountAmount ? (
+              <>
+                <span className="text-white/40 line-through text-sm mr-2">${getTotal().toFixed(2)}</span>
+                <span className="text-green-400 font-bold text-xl">${(appliedPromo.finalTotal ?? getTotal()).toFixed(2)}</span>
+              </>
+            ) : (
+              <span className="text-green-400 font-bold text-xl">${getTotal().toFixed(2)}</span>
+            )}
+          </div>
         </div>
+
+        {/* Promo Code Input */}
+        <div className="mt-3 flex gap-2">
+          <input
+            type="text"
+            value={promoInput}
+            onChange={e => setPromoInput(e.target.value.toUpperCase())}
+            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), applyPromo())}
+            placeholder="PROMO CODE"
+            className="flex-1 px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono placeholder-white/30"
+          />
+          <button
+            type="button"
+            onClick={applyPromo}
+            disabled={promoLoading || !promoInput.trim()}
+            className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-400 text-sm font-mono rounded-lg transition-all disabled:opacity-50"
+          >
+            {promoLoading ? '...' : 'Apply'}
+          </button>
+        </div>
+        {appliedPromo?.valid && (
+          <button
+            type="button"
+            onClick={() => { setAppliedPromo(null); setPromoInput(''); }}
+            className="mt-1 text-xs text-white/40 hover:text-white/60 transition-colors"
+          >
+            Remove promo
+          </button>
+        )}
       </div>
 
       <form onSubmit={handleSubmit}>

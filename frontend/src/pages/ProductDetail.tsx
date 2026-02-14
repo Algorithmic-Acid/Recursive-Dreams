@@ -4,8 +4,16 @@ import { ArrowLeft, ShoppingCart, Download, Heart, Zap } from 'lucide-react';
 import { Product, PricingVariant } from '../types';
 import { productAPI } from '../services/api';
 import { useCartStore } from '../store/cartStore';
+import { AudioPlayer } from '../components/AudioPlayer';
 import { Footer } from '../components/Footer';
 import toast from 'react-hot-toast';
+
+const LICENSE_COLORS: Record<string, string> = {
+  'royalty-free': 'text-green-400 border-green-500/40 bg-green-500/10',
+  'commercial': 'text-cyan-400 border-cyan-500/40 bg-cyan-500/10',
+  'personal': 'text-purple-400 border-purple-500/40 bg-purple-500/10',
+  'exclusive': 'text-pink-400 border-pink-500/40 bg-pink-500/10',
+};
 
 export const ProductDetail = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -235,6 +243,14 @@ export const ProductDetail = () => {
               </a>
             )}
 
+            {/* Audio Preview Player */}
+            {product.preview_url && (
+              <div className="mt-4">
+                <p className="text-white/40 font-mono text-xs uppercase tracking-wider mb-2">Preview</p>
+                <AudioPlayer src={product.preview_url} label={product.name} />
+              </div>
+            )}
+
             {/* Stock Info */}
             {product.stock < 10 && product.stock > 0 && (
               <div className="mt-4 text-yellow-400 font-mono text-sm">
@@ -258,6 +274,26 @@ export const ProductDetail = () => {
                   <div>
                     <span className="text-white/50">File Size</span>
                     <p className="text-white font-medium">{product.file_size_mb} MB</p>
+                  </div>
+                )}
+                {product.license_type && (
+                  <div>
+                    <span className="text-white/50">License</span>
+                    <p className={`font-medium uppercase text-xs mt-0.5 px-2 py-1 border rounded-md inline-block ${LICENSE_COLORS[product.license_type] || 'text-white/70 border-white/20 bg-white/5'}`}>
+                      {product.license_type}
+                    </p>
+                  </div>
+                )}
+                {product.metadata?.bpm && (
+                  <div>
+                    <span className="text-white/50">BPM</span>
+                    <p className="text-purple-400 font-mono font-medium">{product.metadata.bpm}</p>
+                  </div>
+                )}
+                {product.metadata?.musical_key && (
+                  <div>
+                    <span className="text-white/50">Key</span>
+                    <p className="text-pink-400 font-mono font-medium">{product.metadata.musical_key}</p>
                   </div>
                 )}
               </div>

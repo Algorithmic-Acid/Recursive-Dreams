@@ -35,4 +35,21 @@ export const productAPI = {
   },
 };
 
+export interface PromoValidateResult {
+  valid: boolean;
+  code?: string;
+  discountType?: 'percent' | 'fixed';
+  discountValue?: number;
+  discountAmount?: number;
+  finalTotal?: number;
+  error?: string;
+}
+
+export const promoAPI = {
+  validate: async (code: string, cartTotal: number): Promise<PromoValidateResult> => {
+    const response = await api.post<ApiResponse<PromoValidateResult>>('/promo/validate', { code, cartTotal });
+    return response.data.data || { valid: false, error: 'No response' };
+  },
+};
+
 export default api;

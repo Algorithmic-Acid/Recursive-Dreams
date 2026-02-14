@@ -176,6 +176,18 @@ export const Admin = () => {
   const [attackTimeline, setAttackTimeline] = useState<any[]>([]);
   const [credHarvests, setCredHarvests] = useState<any[]>([]);
 
+  // Products tab state
+  const [adminProducts, setAdminProducts] = useState<any[]>([]);
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [productForm, setProductForm] = useState<any>({});
+  const [showProductForm, setShowProductForm] = useState(false);
+  const [previewUploading, setPreviewUploading] = useState(false);
+
+  // Promo tab state
+  const [promoCodes, setPromoCodes] = useState<any[]>([]);
+  const [promoForm, setPromoForm] = useState({ code: '', discountType: 'percent', discountValue: '', maxUses: '', expiresAt: '' });
+  const [showPromoForm, setShowPromoForm] = useState(false);
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
@@ -325,6 +337,24 @@ export const Admin = () => {
       fetchSecurityData();
     }
   }, [activeTab]);
+
+  const fetchAdminProducts = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/products`, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
+      const data = await res.json();
+      if (data.success) setAdminProducts(data.data);
+    } catch { /* silently ignore */ }
+  };
+
+  const fetchPromoCodes = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/promo`, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
+      const data = await res.json();
+      if (data.success) setPromoCodes(data.data);
+    } catch { /* silently ignore */ }
+  };
 
   const fetchSecurityData = async () => {
     const token = localStorage.getItem('token');
@@ -803,6 +833,30 @@ export const Admin = () => {
                 {blacklistData.totalBanned}
               </span>
             )}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('products' as any); fetchAdminProducts(); }}
+            className={`px-3 sm:px-6 py-2 sm:py-3 font-mono text-xs sm:text-sm rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 whitespace-nowrap flex-shrink-0 ${
+              (activeTab as string) === 'products'
+                ? 'bg-purple-500 text-white'
+                : 'bg-dark-card border border-purple-500/30 text-purple-400 hover:bg-purple-500/10'
+            }`}
+          >
+            <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            PRODUCTS
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('promo' as any); fetchPromoCodes(); }}
+            className={`px-3 sm:px-6 py-2 sm:py-3 font-mono text-xs sm:text-sm rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 whitespace-nowrap flex-shrink-0 ${
+              (activeTab as string) === 'promo'
+                ? 'bg-pink-500 text-white'
+                : 'bg-dark-card border border-pink-500/30 text-pink-400 hover:bg-pink-500/10'
+            }`}
+          >
+            <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            PROMO
           </button>
         </div>
 
@@ -2305,6 +2359,290 @@ export const Admin = () => {
           </div>
         )}
       </section>
+
+        {/* Products Tab */}
+        {(activeTab as string) === 'products' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white font-mono">[ PRODUCTS ]</h2>
+              <button
+                type="button"
+                onClick={() => { setProductForm({ productType: 'digital', licenseType: 'royalty-free', icon: '📦', stock: 99999 }); setEditingProduct(null); setShowProductForm(true); }}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 border border-purple-500/40 text-purple-400 font-mono text-sm rounded-lg hover:bg-purple-500/30 transition-all"
+              >
+                <Plus className="w-4 h-4" /> NEW PRODUCT
+              </button>
+            </div>
+
+            {/* Product Form Modal */}
+            {showProductForm && (
+              <div className="bg-dark-card border border-purple-500/30 rounded-lg p-4 space-y-3">
+                <h3 className="text-white font-mono text-sm">{editingProduct ? '[ EDIT PRODUCT ]' : '[ CREATE PRODUCT ]'}</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    { key: 'name', label: 'Name', type: 'text' },
+                    { key: 'price', label: 'Price ($)', type: 'number' },
+                    { key: 'icon', label: 'Icon (emoji)', type: 'text' },
+                    { key: 'stock', label: 'Stock', type: 'number' },
+                    { key: 'downloadUrl', label: 'Download URL', type: 'text' },
+                    { key: 'fileSizeMb', label: 'File Size (MB)', type: 'number' },
+                    { key: 'imageUrl', label: 'Image URL', type: 'text' },
+                  ].map(({ key, label, type }) => (
+                    <div key={key}>
+                      <label className="text-white/50 text-xs font-mono block mb-1">{label}</label>
+                      <input
+                        type={type}
+                        title={label}
+                        placeholder={label}
+                        value={productForm[key] || ''}
+                        onChange={e => setProductForm((p: any) => ({ ...p, [key]: e.target.value }))}
+                        className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                  ))}
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">Category</label>
+                    <select title="Category" value={productForm.category || 'software'} onChange={e => setProductForm((p: any) => ({ ...p, category: e.target.value }))} className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500">
+                      {['software', 'soundscapes', 'music', 'templates', 'synthesizers', 'effects_pedals', 'hoodies', 'shirts'].map(c => <option key={c} value={c} className="bg-gray-900">{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">Type</label>
+                    <select title="Type" value={productForm.productType || 'digital'} onChange={e => setProductForm((p: any) => ({ ...p, productType: e.target.value }))} className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500">
+                      <option value="digital" className="bg-gray-900">Digital</option>
+                      <option value="physical" className="bg-gray-900">Physical</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">License</label>
+                    <select title="License" value={productForm.licenseType || 'royalty-free'} onChange={e => setProductForm((p: any) => ({ ...p, licenseType: e.target.value }))} className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500">
+                      {['royalty-free', 'commercial', 'personal', 'exclusive'].map(l => <option key={l} value={l} className="bg-gray-900">{l}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">BPM</label>
+                    <input type="number" value={productForm.bpm || ''} onChange={e => setProductForm((p: any) => ({ ...p, bpm: e.target.value }))} className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500" placeholder="120" />
+                  </div>
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">Key</label>
+                    <input type="text" value={productForm.musicalKey || ''} onChange={e => setProductForm((p: any) => ({ ...p, musicalKey: e.target.value }))} className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500" placeholder="C Minor" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-white/50 text-xs font-mono block mb-1">Description</label>
+                  <textarea value={productForm.description || ''} onChange={e => setProductForm((p: any) => ({ ...p, description: e.target.value }))} rows={3} placeholder="Product description..." className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500" />
+                </div>
+
+                {/* Audio preview upload (edit mode only) */}
+                {editingProduct && (
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">Audio Preview</label>
+                    <div className="flex items-center gap-3">
+                      {editingProduct.previewUrl ? (
+                        <span className="text-cyan-400 text-xs font-mono truncate max-w-xs">{editingProduct.previewUrl.split('/').pop()}</span>
+                      ) : (
+                        <span className="text-white/30 text-xs">No preview</span>
+                      )}
+                      <label className="cursor-pointer px-3 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 text-xs font-mono rounded-lg hover:bg-cyan-500/30 transition-all">
+                        {previewUploading ? 'Uploading...' : 'Upload Audio'}
+                        <input type="file" accept="audio/*" className="hidden" disabled={previewUploading} onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file || !editingProduct) return;
+                          setPreviewUploading(true);
+                          try {
+                            const token = localStorage.getItem('token');
+                            const fd = new FormData();
+                            fd.append('preview', file);
+                            const res = await fetch(`${API_URL}/api/admin/products/${editingProduct.id}/preview`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, credentials: 'include', body: fd });
+                            const data = await res.json();
+                            if (data.success) { toast.success('Preview uploaded'); setEditingProduct((p: any) => ({ ...p, previewUrl: data.data.previewUrl })); fetchAdminProducts(); }
+                            else toast.error(data.error || 'Upload failed');
+                          } catch { toast.error('Upload failed'); }
+                          finally { setPreviewUploading(false); }
+                        }} />
+                      </label>
+                      {editingProduct.previewUrl && (
+                        <button type="button" onClick={async () => {
+                          const token = localStorage.getItem('token');
+                          const res = await fetch(`${API_URL}/api/admin/products/${editingProduct.id}/preview`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
+                          const data = await res.json();
+                          if (data.success) { toast.success('Preview deleted'); setEditingProduct((p: any) => ({ ...p, previewUrl: null })); fetchAdminProducts(); }
+                        }} className="text-red-400 text-xs hover:text-red-300">Delete</button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={async () => {
+                    const token = localStorage.getItem('token');
+                    const body = {
+                      name: productForm.name, category: productForm.category || 'software',
+                      productType: productForm.productType || 'digital', price: parseFloat(productForm.price) || 0,
+                      description: productForm.description || '', icon: productForm.icon || '📦',
+                      imageUrl: productForm.imageUrl || null, stock: parseInt(productForm.stock) || 99999,
+                      downloadUrl: productForm.downloadUrl || null, fileSizeMb: productForm.fileSizeMb ? parseFloat(productForm.fileSizeMb) : null,
+                      licenseType: productForm.licenseType || 'royalty-free',
+                      metadata: { ...(productForm.bpm ? { bpm: parseInt(productForm.bpm) } : {}), ...(productForm.musicalKey ? { musical_key: productForm.musicalKey } : {}) },
+                    };
+                    const url = editingProduct ? `${API_URL}/api/admin/products/${editingProduct.id}` : `${API_URL}/api/admin/products`;
+                    const method = editingProduct ? 'PUT' : 'POST';
+                    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, credentials: 'include', body: JSON.stringify(body) });
+                    const data = await res.json();
+                    if (data.success) { toast.success(editingProduct ? 'Product updated' : 'Product created'); setShowProductForm(false); setEditingProduct(null); fetchAdminProducts(); }
+                    else toast.error(data.error || 'Failed');
+                  }} className="px-6 py-2 bg-purple-500 hover:bg-purple-400 text-white text-sm font-mono rounded-lg transition-all">
+                    {editingProduct ? 'SAVE' : 'CREATE'}
+                  </button>
+                  <button type="button" onClick={() => { setShowProductForm(false); setEditingProduct(null); }} className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-mono rounded-lg transition-all">CANCEL</button>
+                </div>
+              </div>
+            )}
+
+            {/* Product List */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs font-mono">
+                <thead>
+                  <tr className="text-white/40 border-b border-white/10">
+                    <th className="text-left py-2 px-2">ICON</th>
+                    <th className="text-left py-2 px-2">NAME</th>
+                    <th className="text-left py-2 px-2">CATEGORY</th>
+                    <th className="text-left py-2 px-2">PRICE</th>
+                    <th className="text-left py-2 px-2">LICENSE</th>
+                    <th className="text-left py-2 px-2">BPM</th>
+                    <th className="text-left py-2 px-2">KEY</th>
+                    <th className="text-left py-2 px-2">PREVIEW</th>
+                    <th className="text-left py-2 px-2">ACTIVE</th>
+                    <th className="text-left py-2 px-2">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminProducts.map(p => (
+                    <tr key={p.id} className="border-b border-white/5 hover:bg-white/5">
+                      <td className="py-2 px-2 text-lg">{p.icon}</td>
+                      <td className="py-2 px-2 text-white max-w-[120px] truncate">{p.name}</td>
+                      <td className="py-2 px-2 text-cyan-400/70">{p.category}</td>
+                      <td className="py-2 px-2 text-green-400">${p.price?.toFixed(2)}</td>
+                      <td className="py-2 px-2 text-purple-400">{p.licenseType || '—'}</td>
+                      <td className="py-2 px-2 text-white/50">{p.metadata?.bpm || '—'}</td>
+                      <td className="py-2 px-2 text-white/50">{p.metadata?.musical_key || '—'}</td>
+                      <td className="py-2 px-2">{p.previewUrl ? <span className="text-cyan-400">✓</span> : <span className="text-white/20">—</span>}</td>
+                      <td className="py-2 px-2">{p.isActive ? <span className="text-green-400">✓</span> : <span className="text-red-400">✗</span>}</td>
+                      <td className="py-2 px-2">
+                        <button type="button" onClick={() => {
+                          setEditingProduct(p);
+                          setProductForm({ name: p.name, category: p.category, productType: p.productType, price: p.price, description: p.description, icon: p.icon, imageUrl: p.imageUrl, stock: p.stock, downloadUrl: p.downloadUrl, fileSizeMb: p.fileSizeMb, licenseType: p.licenseType, bpm: p.metadata?.bpm || '', musicalKey: p.metadata?.musical_key || '' });
+                          setShowProductForm(true);
+                        }} className="text-cyan-400 hover:text-cyan-300 mr-3">Edit</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {adminProducts.length === 0 && <p className="text-white/30 text-xs font-mono py-4 text-center">No products loaded. Click PRODUCTS tab to refresh.</p>}
+            </div>
+          </div>
+        )}
+
+        {/* Promo Codes Tab */}
+        {(activeTab as string) === 'promo' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white font-mono">[ PROMO CODES ]</h2>
+              <button type="button" onClick={() => setShowPromoForm(v => !v)} className="flex items-center gap-2 px-4 py-2 bg-pink-500/20 border border-pink-500/40 text-pink-400 font-mono text-sm rounded-lg hover:bg-pink-500/30 transition-all">
+                <Plus className="w-4 h-4" /> NEW CODE
+              </button>
+            </div>
+
+            {showPromoForm && (
+              <div className="bg-dark-card border border-pink-500/30 rounded-lg p-4 space-y-3">
+                <h3 className="text-white font-mono text-sm">[ CREATE PROMO CODE ]</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">Code</label>
+                    <input type="text" value={promoForm.code} onChange={e => setPromoForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="LAUNCH20" className="w-full px-3 py-2 bg-white/10 text-white text-sm font-mono rounded-lg focus:outline-none focus:ring-1 focus:ring-pink-500" />
+                  </div>
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">Type</label>
+                    <select title="Type" value={promoForm.discountType} onChange={e => setPromoForm(p => ({ ...p, discountType: e.target.value }))} className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-pink-500">
+                      <option value="percent" className="bg-gray-900">Percent (%)</option>
+                      <option value="fixed" className="bg-gray-900">Fixed ($)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">Value ({promoForm.discountType === 'percent' ? '%' : '$'})</label>
+                    <input type="number" value={promoForm.discountValue} onChange={e => setPromoForm(p => ({ ...p, discountValue: e.target.value }))} className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-pink-500" placeholder={promoForm.discountType === 'percent' ? '20' : '5.00'} />
+                  </div>
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">Max Uses (blank = unlimited)</label>
+                    <input type="number" value={promoForm.maxUses} onChange={e => setPromoForm(p => ({ ...p, maxUses: e.target.value }))} className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-pink-500" placeholder="100" />
+                  </div>
+                  <div>
+                    <label className="text-white/50 text-xs font-mono block mb-1">Expires At (blank = never)</label>
+                    <input type="datetime-local" title="Expires At" value={promoForm.expiresAt} onChange={e => setPromoForm(p => ({ ...p, expiresAt: e.target.value }))} className="w-full px-3 py-2 bg-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-pink-500" />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={async () => {
+                    const token = localStorage.getItem('token');
+                    const body = { code: promoForm.code, discountType: promoForm.discountType, discountValue: parseFloat(promoForm.discountValue), maxUses: promoForm.maxUses ? parseInt(promoForm.maxUses) : null, expiresAt: promoForm.expiresAt || null };
+                    const res = await fetch(`${API_URL}/api/admin/promo`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, credentials: 'include', body: JSON.stringify(body) });
+                    const data = await res.json();
+                    if (data.success) { toast.success('Promo code created'); setShowPromoForm(false); setPromoForm({ code: '', discountType: 'percent', discountValue: '', maxUses: '', expiresAt: '' }); fetchPromoCodes(); }
+                    else toast.error(data.error || 'Failed');
+                  }} className="px-6 py-2 bg-pink-500 hover:bg-pink-400 text-white text-sm font-mono rounded-lg transition-all">CREATE</button>
+                  <button type="button" onClick={() => setShowPromoForm(false)} className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-mono rounded-lg transition-all">CANCEL</button>
+                </div>
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs font-mono">
+                <thead>
+                  <tr className="text-white/40 border-b border-white/10">
+                    <th className="text-left py-2 px-2">CODE</th>
+                    <th className="text-left py-2 px-2">TYPE</th>
+                    <th className="text-left py-2 px-2">VALUE</th>
+                    <th className="text-left py-2 px-2">USED/MAX</th>
+                    <th className="text-left py-2 px-2">EXPIRES</th>
+                    <th className="text-left py-2 px-2">STATUS</th>
+                    <th className="text-left py-2 px-2">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promoCodes.map(pc => (
+                    <tr key={pc.id} className="border-b border-white/5 hover:bg-white/5">
+                      <td className="py-2 px-2 text-pink-400 font-bold">{pc.code}</td>
+                      <td className="py-2 px-2 text-white/70">{pc.discountType}</td>
+                      <td className="py-2 px-2 text-green-400">{pc.discountType === 'percent' ? `${pc.discountValue}%` : `$${pc.discountValue}`}</td>
+                      <td className="py-2 px-2 text-white/70">{pc.usedCount}/{pc.maxUses ?? '∞'}</td>
+                      <td className="py-2 px-2 text-white/50">{pc.expiresAt ? new Date(pc.expiresAt).toLocaleDateString() : 'Never'}</td>
+                      <td className="py-2 px-2">{pc.isActive ? <span className="text-green-400">ACTIVE</span> : <span className="text-red-400">INACTIVE</span>}</td>
+                      <td className="py-2 px-2 flex gap-2">
+                        <button type="button" onClick={async () => {
+                          const token = localStorage.getItem('token');
+                          const res = await fetch(`${API_URL}/api/admin/promo/${pc.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, credentials: 'include', body: JSON.stringify({ isActive: !pc.isActive }) });
+                          const data = await res.json();
+                          if (data.success) { toast.success(pc.isActive ? 'Code deactivated' : 'Code activated'); fetchPromoCodes(); }
+                        }} className={pc.isActive ? 'text-yellow-400 hover:text-yellow-300' : 'text-green-400 hover:text-green-300'}>
+                          {pc.isActive ? 'Deactivate' : 'Activate'}
+                        </button>
+                        <button type="button" onClick={async () => {
+                          if (!confirm(`Delete promo code "${pc.code}"?`)) return;
+                          const token = localStorage.getItem('token');
+                          const res = await fetch(`${API_URL}/api/admin/promo/${pc.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
+                          const data = await res.json();
+                          if (data.success) { toast.success('Deleted'); fetchPromoCodes(); }
+                        }} className="text-red-400 hover:text-red-300">Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {promoCodes.length === 0 && <p className="text-white/30 text-xs font-mono py-4 text-center">No promo codes yet. Create one above.</p>}
+            </div>
+          </div>
+        )}
 
       {/* Footer */}
       <footer className="bg-dark-card border-t border-cyan-500/20 py-4 sm:py-6 mt-auto">

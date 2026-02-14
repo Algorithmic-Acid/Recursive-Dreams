@@ -54,7 +54,7 @@ router.post(
         return res.status(400).json(response);
       }
 
-      const { items } = req.body;
+      const { items, promoCode } = req.body;
 
       // Calculate total from actual product prices (prevent client-side manipulation)
       let total = 0;
@@ -83,6 +83,33 @@ router.post(
         });
       }
 
+      // Apply promo code server-side if provided
+      let discountAmount = 0;
+      let validatedPromoCode: string | null = null;
+      if (promoCode) {
+        const promoResult = await db.query(
+          `SELECT id, code, discount_type, discount_value, max_uses, used_count, expires_at, is_active
+           FROM promo_codes WHERE UPPER(code) = UPPER($1)`,
+          [promoCode]
+        );
+        if (promoResult.rows.length > 0) {
+          const promo = promoResult.rows[0];
+          const isValid = promo.is_active &&
+            (!promo.expires_at || new Date(promo.expires_at) >= new Date()) &&
+            (promo.max_uses === null || promo.used_count < promo.max_uses);
+
+          if (isValid) {
+            if (promo.discount_type === 'percent') {
+              discountAmount = Math.round(total * parseFloat(promo.discount_value)) / 100;
+            } else {
+              discountAmount = Math.min(parseFloat(promo.discount_value), total);
+            }
+            total = Math.max(0, total - discountAmount);
+            validatedPromoCode = promo.code;
+          }
+        }
+      }
+
       // Stripe expects amount in cents
       const amountInCents = Math.round(total * 100);
 
@@ -96,6 +123,7 @@ router.post(
         metadata: {
           userId: req.user!.userId,
           items: JSON.stringify(lineItems),
+          ...(validatedPromoCode ? { promoCode: validatedPromoCode } : {}),
         },
       });
 
@@ -105,6 +133,7 @@ router.post(
           clientSecret: paymentIntent.client_secret,
           paymentIntentId: paymentIntent.id,
           amount: total,
+          discountAmount,
         },
       };
 
@@ -149,6 +178,15 @@ router.post(
           error: `Payment not successful. Status: ${paymentIntent.status}`,
         };
         return res.status(400).json(response);
+      }
+
+      // Mark promo code as used (if one was applied)
+      const usedPromoCode = paymentIntent.metadata?.promoCode;
+      if (usedPromoCode) {
+        await db.query(
+          `UPDATE promo_codes SET used_count = used_count + 1 WHERE UPPER(code) = UPPER($1)`,
+          [usedPromoCode]
+        ).catch(err => console.error('Failed to increment promo used_count:', err));
       }
 
       const response: ApiResponse = {
