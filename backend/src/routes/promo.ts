@@ -21,7 +21,7 @@ router.post('/validate', protect, async (req: Request, res: Response) => {
     }
 
     const result = await db.query(
-      `SELECT id, code, discount_type, discount_value, max_uses, used_count, expires_at, is_active
+      `SELECT id, code, discount_type, discount_value, max_uses, max_uses_per_customer, used_count, expires_at, is_active
        FROM promo_codes
        WHERE UPPER(code) = UPPER($1)`,
       [code]
@@ -43,6 +43,21 @@ router.post('/validate', protect, async (req: Request, res: Response) => {
 
     if (promo.max_uses !== null && promo.used_count >= promo.max_uses) {
       return res.json({ success: true, data: { valid: false, error: 'This promo code has reached its usage limit' } });
+    }
+
+    // Check per-customer usage limit
+    if (promo.max_uses_per_customer !== null) {
+      const userId = (req as any).user?.userId;
+      if (userId) {
+        const usageResult = await db.query(
+          `SELECT COUNT(*) FROM promo_code_uses WHERE promo_code_id = $1 AND user_id = $2`,
+          [promo.id, userId]
+        );
+        const timesUsed = parseInt(usageResult.rows[0].count, 10);
+        if (timesUsed >= promo.max_uses_per_customer) {
+          return res.json({ success: true, data: { valid: false, error: `You have already used this code ${promo.max_uses_per_customer} time(s)` } });
+        }
+      }
     }
 
     // Calculate discount

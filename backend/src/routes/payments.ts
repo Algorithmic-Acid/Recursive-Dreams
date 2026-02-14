@@ -88,15 +88,25 @@ router.post(
       let validatedPromoCode: string | null = null;
       if (promoCode) {
         const promoResult = await db.query(
-          `SELECT id, code, discount_type, discount_value, max_uses, used_count, expires_at, is_active
+          `SELECT id, code, discount_type, discount_value, max_uses, max_uses_per_customer, used_count, expires_at, is_active
            FROM promo_codes WHERE UPPER(code) = UPPER($1)`,
           [promoCode]
         );
         if (promoResult.rows.length > 0) {
           const promo = promoResult.rows[0];
+          let perCustomerOk = true;
+          if (promo.max_uses_per_customer !== null) {
+            const usageResult = await db.query(
+              `SELECT COUNT(*) FROM promo_code_uses WHERE promo_code_id = $1 AND user_id = $2`,
+              [promo.id, req.user!.userId]
+            );
+            const timesUsed = parseInt(usageResult.rows[0].count, 10);
+            perCustomerOk = timesUsed < promo.max_uses_per_customer;
+          }
           const isValid = promo.is_active &&
             (!promo.expires_at || new Date(promo.expires_at) >= new Date()) &&
-            (promo.max_uses === null || promo.used_count < promo.max_uses);
+            (promo.max_uses === null || promo.used_count < promo.max_uses) &&
+            perCustomerOk;
 
           if (isValid) {
             if (promo.discount_type === 'percent') {
@@ -187,6 +197,18 @@ router.post(
           `UPDATE promo_codes SET used_count = used_count + 1 WHERE UPPER(code) = UPPER($1)`,
           [usedPromoCode]
         ).catch(err => console.error('Failed to increment promo used_count:', err));
+
+        // Record per-customer usage
+        const promoRow = await db.query(
+          `SELECT id FROM promo_codes WHERE UPPER(code) = UPPER($1)`,
+          [usedPromoCode]
+        ).catch(() => null);
+        if (promoRow && promoRow.rows.length > 0) {
+          await db.query(
+            `INSERT INTO promo_code_uses (promo_code_id, user_id) VALUES ($1, $2)`,
+            [promoRow.rows[0].id, req.user!.userId]
+          ).catch(err => console.error('Failed to record promo use:', err));
+        }
       }
 
       const response: ApiResponse = {
