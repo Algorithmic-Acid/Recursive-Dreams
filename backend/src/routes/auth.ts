@@ -9,6 +9,14 @@ import { ApiResponse } from '../types';
 import { db } from '../config/postgres';
 import { sendPasswordResetEmail } from '../utils/email';
 
+const COOKIE_OPTS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  path: '/',
+};
+
 const router = express.Router();
 
 // Register new user
@@ -17,7 +25,7 @@ router.post(
   [
     body('name').trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
     body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
   ],
   async (req: Request, res: Response) => {
     try {
@@ -33,12 +41,12 @@ router.post(
 
       const { name, email, password } = req.body;
 
-      // Check if user already exists
+      // Check if user already exists — use generic error to prevent email enumeration
       const existingUser = await UserRepository.findByEmail(email);
       if (existingUser) {
         const response: ApiResponse = {
           success: false,
-          error: 'User with this email already exists',
+          error: 'Registration failed. Please check your details and try again.',
         };
         return res.status(400).json(response);
       }
@@ -72,6 +80,7 @@ router.post(
         message: 'User registered successfully',
       };
 
+      res.cookie('token', token, COOKIE_OPTS);
       res.status(201).json(response);
     } catch (error: any) {
       console.error('Register error:', error);
@@ -137,6 +146,7 @@ router.post(
         message: 'Login successful',
       };
 
+      res.cookie('token', token, COOKIE_OPTS);
       res.json(response);
     } catch (error: any) {
       console.error('Login error:', error);
@@ -249,7 +259,7 @@ router.post(
   '/reset-password',
   [
     body('token').notEmpty().withMessage('Reset token is required'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
   ],
   async (req: Request, res: Response) => {
     try {
@@ -285,8 +295,9 @@ router.post(
 
       const resetRecord = result.rows[0];
 
-      // Update user password
+      // Update user password and increment token_version to invalidate all existing sessions
       await UserRepository.updatePassword(resetRecord.user_id, password);
+      await db.query(`UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = $1`, [resetRecord.user_id]);
 
       // Mark token as used
       await db.query(`
@@ -308,5 +319,11 @@ router.post(
     }
   }
 );
+
+// Logout — clears the HttpOnly auth cookie
+router.post('/logout', (_req: Request, res: Response) => {
+  res.clearCookie('token', { path: '/' });
+  res.json({ success: true, message: 'Logged out' });
+});
 
 export default router;

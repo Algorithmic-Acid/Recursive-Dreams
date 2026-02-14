@@ -266,14 +266,18 @@ setInterval(() => {
 }, 5 * 60_000);
 
 // ─── IP EXTRACTION ───
+// Strips IPv4-mapped IPv6 prefix (::ffff:x.x.x.x → x.x.x.x) to prevent ban evasion
+const normalizeIP = (ip: string): string =>
+  ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+
 const getIP = (req: Request): string => {
   const cf = req.headers['cf-connecting-ip'] as string;
-  if (cf) return cf.trim();
+  if (cf) return normalizeIP(cf.trim());
   const real = req.headers['x-real-ip'] as string;
-  if (real) return real.trim();
+  if (real) return normalizeIP(real.trim());
   const fwd = req.headers['x-forwarded-for'] as string;
-  if (fwd) return fwd.split(',')[0].trim();
-  return req.ip || req.socket?.remoteAddress || 'unknown';
+  if (fwd) return normalizeIP(fwd.split(',')[0].trim());
+  return normalizeIP(req.ip || req.socket?.remoteAddress || 'unknown');
 };
 
 // ─── REQUEST FINGERPRINTING ───
@@ -965,7 +969,15 @@ export const voidTrap = (req: Request, res: Response, next: NextFunction) => {
     }
   }
 
-  // 1e. ABUSEIPDB PRE-CHECK — fire-and-forget reputation lookup on first-seen IPs
+  // 1e. ABUSEIPDB PRE-CHECK — sync cache hit first, then fire-and-forget for new IPs
+  // Sync: if this IP is already cached with a high score, block it immediately
+  const cachedAbuse = abuseIpCache.get(ip);
+  if (cachedAbuse && cachedAbuse.score >= 80) {
+    banIP(ip, `AbuseIPDB cached score ${cachedAbuse.score}%`, req.path, userAgent, ABUSE_CATEGORIES.HACKING);
+    slowDrip(res);
+    return;
+  }
+  // Async: fire lookup for IPs not yet in cache
   checkAbuseIPDB(ip, req.path, userAgent);
 
   // 2. SCANNER USER-AGENT - instant ban

@@ -13,10 +13,17 @@ declare global {
 
 export const protect = (req: Request, res: Response, next: NextFunction): void => {
   try {
-    // Get token from header
-    const authHeader = req.headers.authorization;
+    // Prefer HttpOnly cookie; fall back to Authorization header for backward compat
+    let token: string | undefined = req.cookies?.token;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+      }
+    }
+
+    if (!token) {
       const response: ApiResponse = {
         success: false,
         error: 'Not authorized - No token provided',
@@ -24,8 +31,6 @@ export const protect = (req: Request, res: Response, next: NextFunction): void =
       res.status(401).json(response);
       return;
     }
-
-    const token = authHeader.split(' ')[1];
 
     // Verify token
     const decoded = verifyToken(token);

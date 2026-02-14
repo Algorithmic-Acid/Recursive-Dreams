@@ -3,28 +3,30 @@ import path from 'path';
 import fs from 'fs';
 import { db } from '../config/postgres';
 import { protect } from '../middleware/auth';
-import { verifyToken } from '../utils/jwt';
+import { verifyToken, generateDownloadToken, verifyDownloadToken } from '../utils/jwt';
 import { ApiResponse } from '../types';
 
-// Middleware that supports both header and query param auth (for direct download links)
+// Middleware that supports: HttpOnly cookie, Authorization header, or signed ?dltoken= param
 const authForDownload = (req: Request, res: Response, next: NextFunction) => {
-  // Try header first
-  let token = req.headers.authorization?.replace('Bearer ', '');
+  const productId = req.params.productId;
 
-  // Fall back to query param
-  if (!token && req.query.token) {
-    token = req.query.token as string;
+  // 1. Short-lived signed download token (preferred for direct links)
+  if (req.query.dltoken) {
+    const verified = verifyDownloadToken(req.query.dltoken as string, productId);
+    if (!verified) {
+      return res.status(401).json({ success: false, error: 'Download link expired or invalid' });
+    }
+    req.user = { userId: verified.userId, email: '', role: 'user' };
+    return next();
   }
 
-  if (!token) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
+  // 2. HttpOnly cookie or Authorization header (for in-app downloads)
+  let token: string | undefined = req.cookies?.token;
+  if (!token) token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ success: false, error: 'Authentication required' });
 
-  // Use centralized verifyToken to ensure consistent JWT_SECRET
   const decoded = verifyToken(token);
-  if (!decoded) {
-    return res.status(401).json({ success: false, error: 'Invalid token' });
-  }
+  if (!decoded) return res.status(401).json({ success: false, error: 'Invalid token' });
 
   req.user = decoded;
   next();
@@ -135,6 +137,43 @@ router.get('/check/:productId', protect, async (req: Request, res: Response) => 
       error: 'Failed to check download access',
     };
     res.status(500).json(response);
+  }
+});
+
+// Generate a signed, time-limited download link for a purchased product
+router.get('/link/:productId', protect, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { productId } = req.params;
+
+    // Verify user has purchased this product
+    const result = await db.query(`
+      SELECT p.id, p.name, p.metadata
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      JOIN products p ON p.id = oi.product_id
+      WHERE o.user_id = $1
+        AND oi.product_id = $2
+        AND o.payment_status = 'paid'
+      LIMIT 1
+    `, [userId, productId]);
+
+    if (result.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'You have not purchased this product' });
+    }
+
+    const product = result.rows[0];
+    if (!product.metadata?.download_file) {
+      return res.status(400).json({ success: false, error: 'This product is not available for download' });
+    }
+
+    const token = generateDownloadToken(userId, productId, 60); // 60-minute TTL
+    const downloadUrl = `/api/downloads/file/${productId}?dltoken=${token}`;
+
+    res.json({ success: true, data: { downloadUrl, expiresIn: 3600 } });
+  } catch (error: any) {
+    console.error('Generate download link error:', error);
+    res.status(500).json({ success: false, error: 'Failed to generate download link' });
   }
 });
 

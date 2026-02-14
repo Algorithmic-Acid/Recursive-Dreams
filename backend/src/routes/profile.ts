@@ -2,6 +2,28 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+
+// Magic bytes for allowed image types
+const IMAGE_MAGIC: Array<{ mime: string; bytes: number[]; offset?: number }> = [
+  { mime: 'image/jpeg', bytes: [0xFF, 0xD8, 0xFF] },
+  { mime: 'image/png',  bytes: [0x89, 0x50, 0x4E, 0x47] },
+  { mime: 'image/gif',  bytes: [0x47, 0x49, 0x46, 0x38] },
+  { mime: 'image/webp', bytes: [0x52, 0x49, 0x46, 0x46], offset: 0 }, // RIFF header
+];
+
+const isValidImageMagic = (filePath: string): boolean => {
+  try {
+    const buf = Buffer.alloc(12);
+    const fd = fs.openSync(filePath, 'r');
+    fs.readSync(fd, buf, 0, 12, 0);
+    fs.closeSync(fd);
+    return IMAGE_MAGIC.some(sig =>
+      sig.bytes.every((b, i) => buf[i] === b)
+    );
+  } catch {
+    return false;
+  }
+};
 import { body, validationResult } from 'express-validator';
 import UserRepository from '../repositories/UserRepository';
 import { protect } from '../middleware/auth';
@@ -113,6 +135,12 @@ router.post('/avatar', protect, (req: Request, res: Response) => {
 
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    // Validate actual file content against magic bytes (extension spoofing prevention)
+    if (!isValidImageMagic(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ success: false, error: 'Invalid image file' });
     }
 
     try {
