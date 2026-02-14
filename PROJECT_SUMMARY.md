@@ -1,268 +1,176 @@
-# Algorithmic Acid - Project Summary
+# Algorithmic Acid / Void Vendor — Project Summary
 
-## What We Built
+Live at: **https://www.voidvendor.com**
 
-A **modern, full-stack e-commerce platform** using React, TypeScript, Node.js, and Express.
+---
+
+## What It Is
+
+A full-stack cyberpunk-themed e-commerce platform selling digital music production tools (VST plugins, sample packs, presets). Hosted on a Raspberry Pi 5 behind Nginx with an active-defense security layer called VoidTrap.
+
+---
 
 ## Architecture
 
-### Frontend (React + TypeScript)
-- **Framework**: React 18 with TypeScript
-- **Build Tool**: Vite (fast dev server & build)
-- **Styling**: Tailwind CSS (utility-first)
-- **State Management**: Zustand (lightweight, persistent cart)
-- **HTTP Client**: Axios
-- **UI Components**: Custom components with Lucide icons
-- **Notifications**: React Hot Toast
+### Frontend
+- **React 18 + TypeScript** — component-based SPA
+- **Vite** — build tool / dev server
+- **Tailwind CSS** — utility-first styling (cyberpunk dark theme)
+- **Zustand** — global auth + cart state
+- **Axios** — HTTP client with `withCredentials: true` for cookie auth
+- **react-router-dom** — SPA routing
 
-### Backend (Node.js + TypeScript)
-- **Runtime**: Node.js with Express
-- **Language**: TypeScript (full type safety)
-- **Storage**: In-memory (easily upgradeable to MongoDB)
-- **API**: RESTful endpoints
-- **CORS**: Enabled for frontend communication
+### Backend
+- **Node.js + Express + TypeScript**
+- **PostgreSQL** (via `pg`) — orders, users, products, bans, traffic logs
+- **bcryptjs** — password hashing
+- **jsonwebtoken** — JWT generation; delivered as HttpOnly cookie
+- **cookie-parser** — reads HttpOnly auth cookie
+- **multer** — avatar file upload with MIME magic byte validation
+- **Stripe** — payment processing (client-confirm + server verify)
+- **express-validator** — input validation
 
-## Key Features
+### Infrastructure
+- **Raspberry Pi 5** — production host
+- **PM2** — process manager for Node (`api` process, port 5001)
+- **Nginx** — reverse proxy + SSL termination + rate limiting + security headers
+- **Let's Encrypt** — TLS certificate
 
-1. **Product Catalog**
-   - 16 products across 5 categories
-   - Shirts, Music, Anime, Games, Software
-   - Search and filter functionality
+---
 
-2. **Shopping Cart**
-   - Add/remove items
-   - Adjust quantities
-   - Persistent storage (survives page refresh)
-   - Real-time total calculation
+## Security Architecture
 
-3. **Modern UI/UX**
-   - Responsive design (mobile, tablet, desktop)
-   - Smooth animations
-   - Cyberpunk/neon aesthetic
-   - Toast notifications
+### VoidTrap Middleware (`backend/src/middleware/voidTrap.ts`)
+Active-defense Express middleware that runs before every request:
 
-4. **Type Safety**
-   - Full TypeScript coverage
-   - Shared types between frontend/backend
-   - Compile-time error checking
+| Layer | What it does |
+|-------|-------------|
+| Blacklist | Bans served via slow-drip tarpit (wastes attacker threads) |
+| HTTP method abuse | TRACE/CONNECT + non-API PUT/DELETE → instant ban |
+| Fake token pivot | Bearer tokens harvested from honeypot responses → instant ban |
+| Content-type mismatch | Claimed JSON but unparseable body → ban |
+| AbuseIPDB pre-check | Async lookup + sync cache check; score ≥ 80 → tarpit |
+| Scanner UA | 20+ known scanner patterns → instant ban |
+| Global rate limit | 50 req/10s per IP → ban |
+| Auth rate limit | 10 req/min on login/register; 2 violations → ban |
+| Honeypot form field | Hidden `_void` field in auth forms; bots fill it → ban |
+| Credential stuffing | Same creds from 3+ IPs in 10 min → CRITICAL alert |
+| Path enumeration | 40+ distinct paths in 2 min → ban (low-and-slow scanner) |
+| IP rotation | Same tool fingerprint from 8+ IPs → ban + HIGH alert |
+| Redirect loop | Certain paths cycle forever to waste scanner threads |
+| Honeypot paths | 60+ trap paths serve convincing fake content (WP login, .env, phpMyAdmin, K8s API, Spring Actuator, GraphQL, etc.) |
+| Body injection scan | SQL injection + XSS patterns in POST body → ban |
+
+**Escalating ban tiers**: 30min → 2h → 24h → 7d → permanent (based on offense count, survives restarts via DB)
+
+**Deceptive responses**: fake `.env` with plausible credentials, fake WP login that logs submitted creds + optionally issues a bogus auth cookie, fake Kubernetes secrets, Spring Actuator env, GraphQL introspection, etc.
+
+### Nginx Security Headers
+- `Strict-Transport-Security` (HSTS, preload)
+- `Content-Security-Policy`
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy`
+
+### Auth Security
+- JWT in HttpOnly cookie (not localStorage) — XSS-safe
+- Short-lived HMAC-signed download tokens (60min, not full JWTs)
+- Session invalidation on password reset via `token_version`
+- Generic error messages on registration (no email enumeration)
+- Password minimum 8 characters
+- MIME magic byte validation on avatar uploads
+
+---
+
+## API Routes
+
+```
+/api/auth        register, login, logout, me, forgot-password, reset-password
+/api/products    CRUD (admin-gated writes), search, category filter
+/api/orders      create, history, confirm payment
+/api/payments    create-intent, confirm
+/api/downloads   my-downloads, check/:id, link/:id (signed URL), file/:id
+/api/profile     get/:userId, update, avatar upload
+/api/blog        posts CRUD
+/api/inventory   admin: stock management + AI restock suggestions
+/api/admin       security dashboard, ban management, traffic logs, cred harvests
+```
+
+---
 
 ## File Structure
 
 ```
 Algorithmic_Acid/
-├── backend/              # Node.js API server
-│   ├── src/
-│   │   ├── data/        # Product seed data
-│   │   ├── models/      # Data models
-│   │   ├── routes/      # API routes
-│   │   ├── types/       # TypeScript types
-│   │   └── server.ts    # Express app
-│   └── package.json
-│
-├── frontend/             # React application
-│   ├── src/
-│   │   ├── components/  # React components
-│   │   ├── services/    # API client
-│   │   ├── store/       # Zustand store
-│   │   ├── types/       # TypeScript types
-│   │   ├── App.tsx      # Main component
-│   │   └── main.tsx     # Entry point
-│   └── package.json
-│
-├── README.md            # Full documentation
-├── QUICKSTART.md        # Quick start guide
-└── package.json         # Root package (helper scripts)
+├── backend/
+│   └── src/
+│       ├── config/postgres.ts          # DB connection + schema init
+│       ├── middleware/
+│       │   ├── voidTrap.ts             # Active-defense security middleware
+│       │   ├── auth.ts                 # JWT protect() + admin() middleware
+│       │   └── requestLogger.ts        # Traffic log (last 100 req in memory)
+│       ├── repositories/UserRepository.ts
+│       ├── routes/
+│       │   ├── auth.ts, products.ts, orders.ts, payments.ts
+│       │   ├── downloads.ts, profile.ts, blog.ts
+│       │   ├── inventory.ts, admin.ts
+│       ├── utils/
+│       │   ├── jwt.ts                  # generateToken, verifyToken, generateDownloadToken
+│       │   └── email.ts                # Password reset emails
+│       └── server.ts                   # App bootstrap
+├── frontend/
+│   └── src/
+│       ├── components/                 # AuthModal, Navbar, Cart, etc.
+│       ├── pages/                      # Home, Shop, Admin, Profile, etc.
+│       ├── store/                      # Zustand: useAuthStore, useCartStore
+│       ├── services/api.ts             # Axios instance (withCredentials: true)
+│       └── types/
+├── deploy.ps1                          # One-command deploy: frontend + backend to Pi
+├── pull-db-backup.ps1                  # Pull latest DB backup from Pi to Windows
+└── db-backups/                         # Off-site backup storage (gitignored)
 ```
-
-## Tech Decisions
-
-### Why React?
-- Component-based architecture
-- Large ecosystem
-- Excellent TypeScript support
-- Virtual DOM for performance
-
-### Why TypeScript?
-- Type safety prevents bugs
-- Better IDE support
-- Self-documenting code
-- Easier refactoring
-
-### Why Vite?
-- 10-100x faster than Create React App
-- Hot Module Replacement (HMR)
-- Optimized production builds
-- Native ES modules
-
-### Why Zustand?
-- Tiny bundle size (< 1KB)
-- Simple API (no boilerplate)
-- Built-in persistence
-- Better than Redux for small apps
-
-### Why Tailwind CSS?
-- Utility-first approach
-- No CSS naming conflicts
-- Responsive design utilities
-- Smaller bundle than Bootstrap
-
-### Why Express?
-- Minimal and flexible
-- Large middleware ecosystem
-- Well-documented
-- Industry standard
-
-## API Endpoints
-
-```
-GET    /api/products              # Get all products
-GET    /api/products?category=X   # Filter by category
-GET    /api/products?search=X     # Search products
-GET    /api/products/:id          # Get single product
-POST   /api/products              # Create product
-PUT    /api/products/:id          # Update product
-DELETE /api/products/:id          # Delete product
-GET    /api/health                # Health check
-```
-
-## Environment Variables
-
-### Backend (.env)
-```
-PORT=5000
-NODE_ENV=development
-MONGODB_URI=mongodb://localhost:27017/algorithmic_acid
-JWT_SECRET=your_secret
-FRONTEND_URL=http://localhost:5173
-```
-
-### Frontend (.env)
-```
-VITE_API_URL=http://localhost:5000/api
-```
-
-## Quick Start Commands
-
-```bash
-# Install all dependencies
-npm run install:all
-
-# Terminal 1 - Run backend
-cd backend
-npm run dev
-
-# Terminal 2 - Run frontend
-cd frontend
-npm run dev
-```
-
-Open http://localhost:5173
-
-## Production Deployment
-
-### Backend Options
-- Railway
-- Render
-- Heroku
-- DigitalOcean
-- AWS EC2
-
-### Frontend Options
-- Vercel (recommended)
-- Netlify
-- Cloudflare Pages
-- AWS S3 + CloudFront
-
-## Next Steps for Production
-
-1. **Database**: Replace in-memory storage with MongoDB
-2. **Authentication**: Add JWT-based auth
-3. **Payment**: Integrate Stripe/PayPal
-4. **Image Upload**: Add Cloudinary/AWS S3
-5. **Email**: Add SendGrid for notifications
-6. **Analytics**: Add Google Analytics
-7. **Testing**: Add Jest/Vitest tests
-8. **CI/CD**: Set up GitHub Actions
-
-## Code Quality Features
-
-- ✅ TypeScript strict mode
-- ✅ ESLint configuration
-- ✅ Consistent code style
-- ✅ Error handling
-- ✅ API response types
-- ✅ Component separation
-- ✅ Clean architecture
-
-## Performance Features
-
-- ✅ Vite for fast builds
-- ✅ Code splitting ready
-- ✅ Lazy loading capable
-- ✅ Optimized images (emoji icons)
-- ✅ Minimal dependencies
-- ✅ Tree shaking enabled
-
-## Security Considerations
-
-- ✅ CORS configured
-- ✅ Environment variables
-- ✅ Input validation ready
-- ⚠️ Add rate limiting (production)
-- ⚠️ Add helmet.js (production)
-- ⚠️ Add authentication (production)
-- ⚠️ Add HTTPS (production)
-
-## Browser Support
-
-- Chrome/Edge (latest)
-- Firefox (latest)
-- Safari (latest)
-- Mobile browsers (iOS/Android)
-
-## Learning Resources
-
-### React
-- [React Docs](https://react.dev)
-- [TypeScript + React](https://react-typescript-cheatsheet.netlify.app)
-
-### TypeScript
-- [TypeScript Handbook](https://www.typescriptlang.org/docs)
-
-### Node.js/Express
-- [Express Guide](https://expressjs.com/en/guide/routing.html)
-- [Node.js Best Practices](https://github.com/goldbergyoni/nodebestpractices)
-
-### Tailwind CSS
-- [Tailwind Docs](https://tailwindcss.com/docs)
-
-## Project Stats
-
-- **Total Files**: ~30
-- **Lines of Code**: ~2000+
-- **Technologies**: 10+
-- **Components**: 5 main components
-- **API Endpoints**: 7 routes
-- **Products**: 16 items
-- **Categories**: 5 types
-
-## Migration from HTML Version
-
-Your original HTML/CSS/JS files have been renamed to:
-- `index.html.old`
-- `styles.css.old`
-- `script.js.old`
-
-These are kept as reference. The new TypeScript version is much more scalable and production-ready.
-
-## Support & Maintenance
-
-- Well-structured codebase
-- Comprehensive documentation
-- Type safety prevents bugs
-- Easy to extend
-- Industry-standard patterns
 
 ---
 
-**Congratulations!** You now have a professional, full-stack e-commerce platform ready for development and deployment.
+## Deployment
+
+```powershell
+# Deploy everything
+powershell -ExecutionPolicy Bypass -File deploy.ps1 all
+
+# Frontend only
+powershell -ExecutionPolicy Bypass -File deploy.ps1 frontend
+
+# Backend only
+powershell -ExecutionPolicy Bypass -File deploy.ps1 backend
+
+# Pull latest DB backup to this machine
+powershell -ExecutionPolicy Bypass -File pull-db-backup.ps1
+```
+
+Pi: `void@void.local` | Backend: PM2 process `api` on port 5001 | DB: PostgreSQL `algorithmic_acid`
+
+---
+
+## Database Backups
+
+- **Pi**: nightly cron at 3am → `pg_dump | gzip` → `/home/wes/voidvendor-backups/` (7-day retention)
+- **Windows**: `pull-db-backup.ps1` SCPs latest backup (14-copy retention)
+
+---
+
+## Environment Variables (Pi `/home/wes/voidvendor/backend/.env`)
+
+```
+PORT=5001
+NODE_ENV=production
+JWT_SECRET=...
+JWT_EXPIRE=7d
+DATABASE_URL=...
+STRIPE_SECRET_KEY=...
+ABUSEIPDB_API_KEY=...
+ADMIN_IPS=...
+DOWNLOADS_DIR=/home/wes/voidvendor-downloads
+UPLOADS_DIR=/home/wes/voidvendor-uploads/avatars
+```
