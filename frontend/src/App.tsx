@@ -154,6 +154,32 @@ function HomePage() {
         onLogout={handleLogout}
       />
 
+      {/* Scrolling Ticker */}
+      <div className="overflow-hidden bg-black/60 border-b border-cyan-500/20 py-1.5 select-none">
+        <div className="flex whitespace-nowrap animate-marquee">
+          {[...Array(2)].map((_, i) => (
+            <span key={i} className="flex items-center gap-6 pr-6 text-xs font-mono text-white/50">
+              <span className="text-cyan-400/70">⚡ EFFECTS PEDALS</span>
+              <span className="text-white/20">//</span>
+              <span>MORE CATEGORIES DROPPING SOON</span>
+              <span className="text-white/20">//</span>
+              <span className="text-purple-400/70">⚡ HARDWARE SYNTHS</span>
+              <span className="text-white/20">//</span>
+              <span>EXCLUSIVE SAMPLE PACKS</span>
+              <span className="text-white/20">//</span>
+              <span className="text-pink-400/70">⚡ DRUM MACHINES</span>
+              <span className="text-white/20">//</span>
+              <span>NEW DROPS INCOMING</span>
+              <span className="text-white/20">//</span>
+              <span className="text-cyan-400/70">⚡ MIDI CONTROLLERS</span>
+              <span className="text-white/20">//</span>
+              <span>STAY TUNED TO THE VOID</span>
+              <span className="text-white/20">//</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
       {/* Early Access Banner */}
       <div className="relative overflow-hidden bg-gradient-to-r from-purple-900/80 via-black to-cyan-900/80 border-y border-cyan-500/30">
         {/* Animated scan line */}
