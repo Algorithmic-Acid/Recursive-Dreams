@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { pool } from '../config/postgres';
+import { db } from '../config/postgres';
 import jwt from 'jsonwebtoken';
 
 const router = Router();
@@ -28,7 +28,7 @@ router.post('/', async (req: Request, res: Response) => {
         const token = authHeader.substring(7);
         const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
         userId = decoded.userId;
-        const userResult = await pool.query('SELECT email, name FROM users WHERE id = $1', [userId]);
+        const userResult = await db.query('SELECT email, name FROM users WHERE id = $1', [userId]);
         if (userResult.rows[0]) {
           userEmail = userResult.rows[0].email;
           userName = userResult.rows[0].name;
@@ -38,7 +38,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    await pool.query(
+    await db.query(
       `INSERT INTO bug_reports (user_id, user_email, user_name, title, description, page_url, severity)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [userId, userEmail, userName, title.trim(), description.trim(), pageUrl?.trim() || null, severity]
