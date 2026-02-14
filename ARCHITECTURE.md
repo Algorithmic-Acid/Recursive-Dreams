@@ -58,6 +58,7 @@ Express Middleware Chain (server.ts)
   │
   ├─ 1. CORS check (allowedOrigins list)
   ├─ 2. JSON body parser (5MB limit)
+  ├─ 2.5 cookie-parser (reads HttpOnly auth cookie)
   │
   ├─ 3. VoidTrap middleware (voidTrap.ts)
   │     ├─ Admin IP whitelist bypass (ADMIN_IPS env var) + ADMIN_HONEYPOT alert
@@ -108,18 +109,18 @@ backend/src/
 │   └── OrderRepository.ts    # Order management
 ├── routes/
 │   ├── products.ts           # GET/POST/PUT /api/products
-│   ├── auth.ts               # POST /api/auth/login|register, GET /api/auth/me
+│   ├── auth.ts               # POST /api/auth/login|register|logout|forgot-password|reset-password, GET /api/auth/me
 │   ├── orders.ts             # Order creation and management
 │   ├── payments.ts           # Stripe card + crypto (BTC/XMR) payments
-│   ├── downloads.ts          # Digital product download management
+│   ├── downloads.ts          # Digital product downloads (my-downloads, link/:id signed URL, file/:id)
 │   ├── blog.ts               # Forum posts and comments
-│   ├── profile.ts            # User profiles + avatar upload (multer)
+│   ├── profile.ts            # User profiles + avatar upload (multer + MIME magic byte validation)
 │   ├── inventory.ts          # Stock management
 │   └── admin.ts              # Admin dashboard, traffic, security endpoints
 ├── types/
 │   └── index.ts              # Shared TypeScript interfaces
 ├── utils/
-│   └── jwt.ts                # JWT sign/verify helpers
+│   └── jwt.ts                # JWT sign/verify helpers + generateDownloadToken/verifyDownloadToken (HMAC, 60-min TTL)
 └── server.ts                 # Express app, middleware chain, startup
 ```
 
@@ -133,7 +134,7 @@ backend/src/
 | 1b | HTTP method abuse (TRACE/CONNECT; PUT/DELETE/PATCH on non-API paths) | Instant ban + 405 |
 | 1c | Fake token pivot (Bearer token matches harvested honeypot credential) | Instant ban + 401 |
 | 1d | Content-type mismatch (claims JSON, body fails to parse) | Instant ban + 400 |
-| 1e | AbuseIPDB pre-check on first-seen IPs (confidence ≥ 80%) | Instant ban (async/cached 24h) |
+| 1e | AbuseIPDB sync cache check + async pre-check on new IPs (confidence ≥ 80%) | Instant tarpit if cached; async lookup for new IPs (cached 24h) |
 | 2 | Scanner User-Agent | Instant ban (iptables + DB + AbuseIPDB) |
 | 3 | Global rate limit (50 req/10s) | Instant ban |
 | 4a | Auth brute-force (10/min on login/register) | Ban after 2 violations |
@@ -365,6 +366,7 @@ users (
   bio TEXT DEFAULT '',
   location VARCHAR(100) DEFAULT '',
   avatar_url VARCHAR(500) DEFAULT '',
+  token_version INTEGER DEFAULT 0,    -- incremented on password reset; invalidates all prior JWTs
   created_at TIMESTAMPTZ
 )
 ```
@@ -428,6 +430,7 @@ Login POST /api/auth/login
   ├─ UserRepository.findByEmail(email)
   ├─ bcryptjs.compare(password, hash)
   ├─ jwt.sign({ userId, email, role })   ← role: 'admin' | 'user'
+  ├─ res.cookie('token', jwt, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 7d })
   └─ Response: { id, name, email, isAdmin }
                         │
                         ▼
@@ -436,12 +439,29 @@ Login POST /api/auth/login
                   authLogin({ ...user, role: isAdmin ? 'admin' : 'user', avatarUrl })
                         │
                         ▼
-                  Zustand authStore (persisted to localStorage)
+                  Zustand authStore (persisted to localStorage for UI state only)
                   All protected actions read from useAuthStore()
 ```
 
-**Protected routes**: JWT sent as `Authorization: Bearer <token>` header.
+**Protected routes**: JWT read from HttpOnly cookie (`req.cookies?.token`) by `cookie-parser`.
+Falls back to `Authorization: Bearer <token>` header for backward compatibility.
 `auth.ts` middleware decodes token → attaches `req.user = { userId, email, role }`.
+
+**Logout**: `POST /api/auth/logout` → `res.clearCookie('token')` — no client-side token to delete.
+
+**Signed download URLs** (no cookie needed — for direct browser download links):
+```
+GET /api/downloads/link/:productId  (requires auth cookie)
+  ├─ Verifies user has purchased product
+  ├─ generateDownloadToken(userId, productId, ttl=60min)
+  │   → base64url(`${userId}:${productId}:${expires}:${hmac_sha256_first24}`)
+  └─ Returns { downloadUrl: '/api/downloads/file/:id?dltoken=<token>', expiresIn: 3600 }
+
+GET /api/downloads/file/:productId?dltoken=<token>
+  ├─ verifyDownloadToken(token, productId)
+  │   → checks expiry + HMAC signature
+  └─ res.download(filePath)
+```
 
 ## Payment Architecture
 
@@ -478,11 +498,15 @@ CryptoConverter component (CryptoConverter.tsx)
 | POST /api/products | Admin | Create product |
 | PUT /api/products/:id | Admin | Update product |
 | POST /api/auth/register | - | Create account |
-| POST /api/auth/login | - | Get JWT token |
+| POST /api/auth/login | - | Login (sets HttpOnly cookie) |
+| POST /api/auth/logout | - | Logout (clears cookie) |
+| POST /api/auth/forgot-password | - | Request password reset email |
+| POST /api/auth/reset-password | - | Reset password + invalidate all sessions |
 | GET /api/auth/me | JWT | Current user info |
 | GET /api/profile/:userId | - | Public user profile |
 | PUT /api/profile | JWT | Update own profile |
-| POST /api/profile/avatar | JWT | Upload avatar (500KB max) |
+| POST /api/profile/avatar | JWT | Upload avatar (500KB max, MIME validated) |
+| GET /api/downloads/link/:productId | JWT | Generate 60-min signed download URL |
 | GET /api/blog/posts | - | Forum posts |
 | POST /api/blog/posts | JWT | Create post |
 | POST /api/blog/posts/:id/comments | JWT | Add comment |
@@ -522,7 +546,7 @@ All other paths     → Nginx serves /home/wes/voidvendor-frontend/ (React dist)
 ### Stack on Pi
 ```
 OS:       Raspberry Pi OS (Linux)
-Runtime:  Node.js 18 (backend) + Nginx (static + proxy)
+Runtime:  Node.js 18 (backend) + Nginx (static + proxy + security headers: HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy)
 Process:  PM2 (process name: "api", auto-restart on crash)
 SSL:      Let's Encrypt (certbot)
 DB:       PostgreSQL 14 (systemd service)
@@ -548,6 +572,13 @@ ABUSEIPDB_API_KEY=<key>          # auto-reports attackers to global DB
 ADMIN_IPS=<ip1>,<ip2>            # comma-separated; bypasses VoidTrap + logs as admin
 NODE_ENV=production
 ```
+
+## Database Backups
+
+- **Pi**: nightly cron at 3am → `pg_dump algorithmic_acid | gzip` → `/home/wes/voidvendor-backups/` (7-day local retention, auto-deletes older files)
+- **Windows**: `pull-db-backup.ps1` — SCPs latest `.sql.gz` from Pi to `db-backups/` folder (14-copy off-site retention)
+
+Run `pull-db-backup.ps1` manually or schedule via Windows Task Scheduler for off-site disaster recovery.
 
 ## Build Process
 
@@ -579,4 +610,4 @@ npm run build
 
 ---
 
-*Void Vendor — Production architecture as of 2026*
+*Void Vendor — Production architecture as of Feb 2026 (security hardening pass complete)*

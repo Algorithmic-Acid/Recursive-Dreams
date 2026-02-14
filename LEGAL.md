@@ -30,7 +30,7 @@ VoidTrap is a server-side middleware layer that protects Void Vendor's infrastru
 - **HTTP method abuse detection**: Unusual HTTP methods (`TRACE`, `CONNECT`) and REST-probing methods (`PUT`, `DELETE`, `PATCH`) on non-API paths indicate automated scanning and trigger instant ban
 - **Hidden form honeypot field**: A CSS-invisible form field (`_void`) in the login/registration form catches bots that auto-fill all fields; human users never see or interact with it
 - **Content-type mismatch detection**: Requests claiming `application/json` with an unparseable body — a scanner tell — trigger instant ban
-- **AbuseIPDB reputation pre-check**: First requests from new IPs are checked against AbuseIPDB's reputation database (confidence score ≥ 80% triggers instant ban); results cached 24 hours to minimize API usage
+- **AbuseIPDB reputation pre-check**: First requests from new IPs are checked against AbuseIPDB's reputation database (confidence score ≥ 80% triggers instant ban); results cached 24 hours to minimize API usage. The cache is also checked **synchronously** on every subsequent request from the same IP — so already-cached high-score IPs are blocked immediately without waiting for a new async lookup
 - **Slow-drip tarpit**: Banned connections are held open (1 byte/3 seconds, max 10 minutes) to exhaust scanner connection pools — this is a passive resource consumption technique applied only to already-banned IPs
 - **Smart alerting**: Automated detection of credential stuffing attacks, ban evasion attempts, IP rotation campaigns, and admin IP anomalies — alerts are surfaced in the admin dashboard for human review
 - **Escalating bans**: Repeat offenders face progressively longer bans up to permanent
@@ -167,4 +167,4 @@ Void Vendor is operated in accordance with:
 
 ---
 
-*Last updated: 2026-02-11 — Added deception layering, redirect loop traps, smart alert system*
+*Last updated: 2026-02-13 — Added AbuseIPDB sync pre-check, HttpOnly JWT cookies, signed download URLs, session invalidation on password reset, MIME magic byte validation on uploads, IPv6 normalization, Nginx security headers*

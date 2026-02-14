@@ -1,210 +1,80 @@
-# Production Roadmap
+# Production Roadmap — Void Vendor
 
-## Phase 1: Database Integration ✅ NEXT
-**Priority: HIGH**
+## Status: Production
 
-### Tasks
-- [ ] Install MongoDB and Mongoose
-- [ ] Create MongoDB connection
-- [ ] Create Product Mongoose schema
-- [ ] Replace in-memory storage with MongoDB
-- [ ] Add database seeding script
-- [ ] Test all CRUD operations
-
-### Files to Create/Modify
-- `backend/src/config/database.ts` - MongoDB connection
-- `backend/src/models/Product.ts` - Update to Mongoose schema
-- `backend/src/scripts/seed.ts` - Database seeding script
-
-### Estimated Time: 30-45 minutes
+The platform is live at **https://www.voidvendor.com** and has completed all planned phases.
 
 ---
 
-## Phase 2: User Authentication ⏳ IN PROGRESS
-**Priority: HIGH**
+## Completed Features
 
-### Tasks
-- [ ] Create User model with Mongoose
-- [ ] Implement password hashing with bcrypt
-- [ ] Create JWT token generation
-- [ ] Add login/register routes
-- [ ] Create auth middleware for protected routes
-- [ ] Add user context in frontend
-- [ ] Create login/register components
-- [ ] Add protected routes
+### Core Platform
+- [x] React + TypeScript + Vite frontend (cyberpunk theme)
+- [x] Express + TypeScript backend
+- [x] PostgreSQL database
+- [x] Stripe card payments (create-intent + server-verify confirm)
+- [x] Cryptocurrency payments (Bitcoin, Monero) with tx hash submission
+- [x] Digital product downloads (purchase-gated)
+- [x] Order management + history
+- [x] User authentication (register, login, logout, forgot/reset password)
+- [x] User profiles with bio, location, avatar upload
+- [x] Product reviews + ratings
+- [x] Community forum (posts + comments)
+- [x] Free VST plugin downloads ("Steal It" button)
+- [x] Admin dashboard (stats, users, orders, inventory, traffic, security)
+- [x] AI-assisted inventory restock suggestions (Anthropic SDK)
+- [x] SEO: sitemap.xml, robots.txt, Open Graph, JSON-LD structured data, Google Search Console
 
-### Files to Create/Modify
-- `backend/src/models/User.ts`
-- `backend/src/routes/auth.ts`
-- `backend/src/middleware/auth.ts`
-- `backend/src/utils/jwt.ts`
-- `frontend/src/components/Login.tsx`
-- `frontend/src/components/Register.tsx`
-- `frontend/src/store/authStore.ts`
-
-### Estimated Time: 1-2 hours
-
----
-
-## Phase 3: Order Management
-**Priority: HIGH**
-
-### Tasks
-- [ ] Create Order model
-- [ ] Add order creation endpoint
-- [ ] Add order history endpoint
-- [ ] Link orders to users
-- [ ] Add order status tracking
-- [ ] Create order components in frontend
-- [ ] Add order history page
-
-### Files to Create/Modify
-- `backend/src/models/Order.ts`
-- `backend/src/routes/orders.ts`
-- `frontend/src/components/Checkout.tsx`
-- `frontend/src/components/OrderHistory.tsx`
-- `frontend/src/pages/Orders.tsx`
-
-### Estimated Time: 1-2 hours
+### Security Hardening (Feb 2026)
+- [x] **VoidTrap** — 16-layer active-defense middleware
+  - Slow-drip tarpit, scanner UA blocking, rate limiting, brute-force protection
+  - Honeypot paths (60+) with convincing fake content (.env, WP login, k8s API, phpMyAdmin, GraphQL, etc.)
+  - Deception layering (15% 503, rotating status codes, infinite redirect loops)
+  - Fake credential success on WP login honeypot (30% of POSTs)
+  - Fake token pivot detection, HTTP method abuse, content-type mismatch
+  - Hidden honeypot form field, credential stuffing detection
+  - Low-and-slow scanner detection, IP rotation / fingerprint tracking
+  - Smart alert system (CREDENTIAL_STUFFING, BAN_EVASION, ADMIN_HONEYPOT, IP_ROTATION)
+  - Escalating ban tiers (30min → 2h → 24h → 7d → permanent)
+  - iptables kernel-level bans (survive restarts)
+  - AbuseIPDB auto-reporting + sync cache pre-check
+  - Geo location lookup (ipinfo.io) on every ban
+  - IPv6 normalization (ban evasion prevention)
+- [x] Nginx security headers: HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
+- [x] JWT via HttpOnly cookie (XSS-safe auth token storage)
+- [x] Signed HMAC download tokens (60-min TTL, replaces bare JWT in download URLs)
+- [x] Session invalidation on password reset (token_version column)
+- [x] Avatar upload MIME magic byte validation (extension spoofing prevention)
+- [x] Account enumeration prevention (generic error on duplicate registration)
+- [x] Password minimum 8 characters
+- [x] npm audit — all high/critical vulnerabilities resolved
+- [x] NODE_ENV=production (suppresses stack traces in responses)
+- [x] DB backups — nightly pg_dump cron on Pi + Windows pull-db-backup.ps1
 
 ---
 
-## Phase 4: Payment Integration (Stripe)
-**Priority: MEDIUM**
+## Potential Future Enhancements
 
-### Tasks
-- [ ] Set up Stripe account
-- [ ] Install Stripe SDK
-- [ ] Create payment intent endpoint
-- [ ] Add Stripe checkout component
-- [ ] Handle payment success/failure
-- [ ] Add webhook for payment events
-- [ ] Test payment flow
+These are ideas only — not committed.
 
-### Files to Create/Modify
-- `backend/src/routes/payments.ts`
-- `backend/src/services/stripe.ts`
-- `frontend/src/components/StripeCheckout.tsx`
+### E-Commerce
+- [ ] Email receipts on successful payment
+- [ ] Affiliate / referral tracking
+- [ ] Promo codes / discounts
+- [ ] Wishlist
+- [ ] Bundle pricing
 
-### Estimated Time: 2-3 hours
+### Security
+- [ ] TOTP 2FA (optional, per-account)
+- [ ] Rate limiting on password reset requests
+- [ ] Cloudflare integration for additional CDN/DDoS layer
 
----
-
-## Phase 5: Image Upload
-**Priority: MEDIUM**
-
-### Tasks
-- [ ] Set up Cloudinary account
-- [ ] Install multer for file uploads
-- [ ] Create image upload endpoint
-- [ ] Add image field to Product model
-- [ ] Create image upload component
-- [ ] Add image optimization
-- [ ] Display product images
-
-### Files to Create/Modify
-- `backend/src/config/cloudinary.ts`
-- `backend/src/routes/upload.ts`
-- `backend/src/middleware/upload.ts`
-- `frontend/src/components/ImageUpload.tsx`
-
-### Estimated Time: 1-2 hours
+### Platform
+- [ ] Automated test suite (Vitest + Supertest)
+- [ ] CI/CD via GitHub Actions
+- [ ] Monitoring / uptime alerts (e.g. Uptime Robot)
+- [ ] Email marketing integration
 
 ---
 
-## Phase 6: User Profiles
-**Priority: LOW**
-
-### Tasks
-- [ ] Create user profile page
-- [ ] Add profile editing
-- [ ] Add shipping addresses
-- [ ] Add payment methods
-- [ ] Create settings page
-
-### Files to Create/Modify
-- `frontend/src/pages/Profile.tsx`
-- `frontend/src/components/AddressForm.tsx`
-- `backend/src/routes/users.ts`
-
-### Estimated Time: 1-2 hours
-
----
-
-## Phase 7: Admin Dashboard
-**Priority: LOW**
-
-### Tasks
-- [ ] Create admin role system
-- [ ] Add admin middleware
-- [ ] Create admin dashboard
-- [ ] Add product management UI
-- [ ] Add order management UI
-- [ ] Add user management UI
-- [ ] Add analytics/stats
-
-### Files to Create/Modify
-- `backend/src/middleware/admin.ts`
-- `frontend/src/pages/admin/Dashboard.tsx`
-- `frontend/src/pages/admin/Products.tsx`
-- `frontend/src/pages/admin/Orders.tsx`
-
-### Estimated Time: 3-4 hours
-
----
-
-## Phase 8: Enhanced Features
-**Priority: LOW**
-
-### Tasks
-- [ ] Add product reviews/ratings
-- [ ] Add wishlist functionality
-- [ ] Add product recommendations
-- [ ] Add email notifications
-- [ ] Add search autocomplete
-- [ ] Add pagination
-- [ ] Add sorting options
-
-### Estimated Time: 2-3 hours
-
----
-
-## Phase 9: Testing & Security
-**Priority: HIGH**
-
-### Tasks
-- [ ] Add input validation (express-validator)
-- [ ] Add rate limiting
-- [ ] Add helmet.js for security headers
-- [ ] Add unit tests (Jest/Vitest)
-- [ ] Add integration tests
-- [ ] Add error boundaries
-- [ ] Add logging (Winston)
-- [ ] Security audit
-
-### Estimated Time: 2-3 hours
-
----
-
-## Phase 10: Deployment
-**Priority: HIGH**
-
-### Tasks
-- [ ] Set up MongoDB Atlas
-- [ ] Configure environment variables
-- [ ] Deploy backend (Railway/Render)
-- [ ] Deploy frontend (Vercel/Netlify)
-- [ ] Set up CI/CD pipeline
-- [ ] Configure custom domain
-- [ ] Set up SSL/HTTPS
-- [ ] Performance optimization
-
-### Estimated Time: 1-2 hours
-
----
-
-## Current Status
-
-**Phase 1: Database Integration** - STARTING NOW
-
-Let's begin with MongoDB integration!
+*All planned work complete as of Feb 2026.*

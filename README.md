@@ -94,6 +94,15 @@ A full-stack e-commerce platform for VST plugins with cyberpunk aesthetics. Feat
 - ✅ **Hidden honeypot form field** - CSS-hidden `_void` input in login/register form; bots that auto-fill fields get instantly banned
 - ✅ **Content-type mismatch detection** - POST claiming `application/json` with unparseable body (scanner tell) triggers ban
 - ✅ **AbuseIPDB pre-check** - First-seen IPs checked against AbuseIPDB; confidence ≥ 80% → instant ban (results cached 24h)
+- ✅ **AbuseIPDB sync pre-check** - In-memory cache checked synchronously before every request; already-cached high-score IPs (≥80%) are tarpitted immediately without waiting for async lookup
+- ✅ **JWT via HttpOnly cookie** - Auth token stored in HttpOnly cookie (not localStorage), preventing XSS-based token theft; `cookie-parser` reads it server-side
+- ✅ **Signed time-limited download URLs** - File downloads use HMAC-signed tokens (60-min TTL) instead of bare JWTs; `GET /api/downloads/link/:productId` generates them; `?dltoken=` param accepted on file endpoint
+- ✅ **Session invalidation on password reset** - `token_version` column incremented on every password reset; all previously issued JWTs become invalid
+- ✅ **Avatar MIME magic byte validation** - First 12 bytes of uploaded files checked against known magic bytes (JPEG/PNG/GIF/WebP) — extension spoofing rejected before any DB write
+- ✅ **IPv6 normalization** - `::ffff:x.x.x.x` IPv4-mapped addresses stripped to plain IPv4 before all ban/rate-limit lookups; prevents ban evasion via IPv6 connection
+- ✅ **Nginx security headers** - HSTS (preload), Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy applied at edge
+- ✅ **Account enumeration prevention** - Registration returns generic failure message regardless of whether email exists
+- ✅ **Password minimum 8 characters** - Enforced at registration and password reset
 - ✅ **Credential stuffing detection** - Same credentials from 3+ IPs in 10 min → CRITICAL alert
 - ✅ **Smart threat alerts** - CREDENTIAL_STUFFING, BAN_EVASION, ADMIN_HONEYPOT, IP_ROTATION alerts surfaced in admin dashboard
 - ✅ **Honeypot response delays** - 300–1200ms random delay slows scanner throughput
@@ -197,7 +206,7 @@ Algorithmic_Acid/
 ## Database Schema (PostgreSQL)
 
 ### Core Tables
-- `users` - User accounts (email, password, is_admin, bio, location, avatar_url)
+- `users` - User accounts (email, password, is_admin, bio, location, avatar_url, token_version)
 - `products` - VST plugins (name, price, description, category, stock, product_type)
 - `orders` - Customer orders
 - `order_items` - Order line items
@@ -285,7 +294,14 @@ The included `deploy.ps1` script automates deployment:
 
 # Deploy everything
 .\deploy.ps1 all
+
+# Pull latest DB backup from Pi to local db-backups/ folder
+.\pull-db-backup.ps1
 ```
+
+### Database Backups
+- **Pi**: nightly `pg_dump | gzip` via cron at 3am → `/home/wes/voidvendor-backups/` (7-day retention)
+- **Windows**: `pull-db-backup.ps1` SCPs latest backup to `db-backups/` (14-copy retention)
 
 ### Manual Deployment Steps
 
@@ -315,9 +331,17 @@ The included `deploy.ps1` script automates deployment:
 - `PUT /api/products/:id` - Update product (admin)
 
 ### Authentication
-- `POST /api/auth/register` - Register user
-- `POST /api/auth/login` - Login user
+- `POST /api/auth/register` - Register user (sets HttpOnly cookie)
+- `POST /api/auth/login` - Login user (sets HttpOnly cookie)
+- `POST /api/auth/logout` - Logout (clears HttpOnly cookie)
 - `GET /api/auth/me` - Get current user
+- `POST /api/auth/forgot-password` - Request password reset email
+- `POST /api/auth/reset-password` - Reset password with token (invalidates all sessions)
+
+### Downloads
+- `GET /api/downloads/my-downloads` - List purchased downloads
+- `GET /api/downloads/link/:productId` - Generate signed 60-min download URL
+- `GET /api/downloads/file/:productId` - Download file (cookie or `?dltoken=`)
 
 ### Payments
 - `POST /api/payments/create-intent` - Create Stripe payment
