@@ -156,7 +156,7 @@ function HomePage() {
 
       {/* Scrolling Ticker */}
       <div className="overflow-hidden bg-black/60 border-b border-cyan-500/20 py-1.5 select-none">
-        <div className="flex whitespace-nowrap animate-marquee">
+        <div className="flex whitespace-nowrap animate-marquee-fast sm:animate-marquee">
           {[...Array(2)].map((_, i) => (
             <span key={i} className="flex items-center gap-6 pr-6 text-xs font-mono text-white/50">
               <span className="text-cyan-400/70">⚡ EFFECTS PEDALS</span>

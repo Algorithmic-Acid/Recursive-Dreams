@@ -28,6 +28,7 @@ export default {
         'slide-up': 'slideUp 0.5s ease-out',
         'scale-in': 'scaleIn 0.3s ease-out',
         'marquee': 'marquee 30s linear infinite',
+        'marquee-fast': 'marquee 15s linear infinite',
       },
       keyframes: {
         fadeIn: {
