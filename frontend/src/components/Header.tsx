@@ -1,10 +1,11 @@
-import { ShoppingCart, Search, Zap, User, LogOut, Menu, X, Shield, Download, Package, Heart, MessageSquare } from 'lucide-react';
+import { ShoppingCart, Search, Zap, User, LogOut, Menu, X, Shield, Download, Package, Heart, MessageSquare, Bug } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ProductCategory } from '../types';
 import { useCartStore } from '../store/cartStore';
 import { useAuthStore } from '../store/authStore';
 import { Avatar } from './Avatar';
+import { BugReportModal } from './BugReportModal';
 
 interface HeaderProps {
   onCategoryChange: (category: ProductCategory | 'all') => void;
@@ -20,6 +21,7 @@ interface HeaderProps {
 export const Header = ({ onCategoryChange, onSearch, onCartClick, user, isAdmin, onLogin, onRegister, onLogout }: HeaderProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [bugModalOpen, setBugModalOpen] = useState(false);
   const itemCount = useCartStore((state) => state.getItemCount());
   const authUser = useAuthStore((state) => state.user);
 
@@ -39,6 +41,7 @@ export const Header = ({ onCategoryChange, onSearch, onCartClick, user, isAdmin,
   ];
 
   return (
+    <>
     <header className="sticky top-0 z-50 bg-dark-card/95 backdrop-blur-md shadow-lg border-b border-cyan-500/20">
       <div className="container mx-auto px-3 sm:px-4">
         {/* Main Header Row */}
@@ -88,6 +91,14 @@ export const Header = ({ onCategoryChange, onSearch, onCartClick, user, isAdmin,
               <Heart className="w-4 h-4" />
               Donate
             </Link>
+            <button
+              type="button"
+              onClick={() => setBugModalOpen(true)}
+              className="flex items-center gap-1 text-orange-400 hover:text-orange-300 transition-colors font-medium text-sm xl:text-base"
+            >
+              <Bug className="w-4 h-4" />
+              Report Bug
+            </button>
           </nav>
 
           {/* Right Side - Auth & Cart */}
@@ -299,10 +310,21 @@ export const Header = ({ onCategoryChange, onSearch, onCartClick, user, isAdmin,
                 <Heart className="w-4 h-4" />
                 Donate
               </Link>
+              <button
+                type="button"
+                onClick={() => { setBugModalOpen(true); setMobileMenuOpen(false); }}
+                className="px-3 py-2.5 bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 hover:border-orange-500/60 rounded-lg text-orange-400 text-sm font-medium transition-all text-center flex items-center justify-center gap-1"
+              >
+                <Bug className="w-4 h-4" />
+                Report Bug
+              </button>
             </div>
           </div>
         )}
       </div>
     </header>
+
+    {bugModalOpen && <BugReportModal onClose={() => setBugModalOpen(false)} />}
+  </>
   );
 };

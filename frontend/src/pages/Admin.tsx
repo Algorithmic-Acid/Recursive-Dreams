@@ -24,7 +24,8 @@ import {
   Globe,
   Skull,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Bug
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -187,6 +188,9 @@ export const Admin = () => {
   const [promoCodes, setPromoCodes] = useState<any[]>([]);
   const [promoForm, setPromoForm] = useState({ code: '', discountType: 'percent', discountValue: '', maxUses: '', expiresAt: '' });
   const [showPromoForm, setShowPromoForm] = useState(false);
+
+  // Bug reports tab state
+  const [bugReports, setBugReports] = useState<any[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -353,6 +357,15 @@ export const Admin = () => {
       const res = await fetch(`${API_URL}/api/admin/promo`, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
       const data = await res.json();
       if (data.success) setPromoCodes(data.data);
+    } catch { /* silently ignore */ }
+  };
+
+  const fetchBugReports = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/bugs`, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
+      const data = await res.json();
+      if (data.success) setBugReports(data.data);
     } catch { /* silently ignore */ }
   };
 
@@ -857,6 +870,23 @@ export const Admin = () => {
           >
             <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             PROMO
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('bugs' as any); fetchBugReports(); }}
+            className={`px-3 sm:px-6 py-2 sm:py-3 font-mono text-xs sm:text-sm rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 whitespace-nowrap flex-shrink-0 ${
+              (activeTab as string) === 'bugs'
+                ? 'bg-orange-500 text-white'
+                : 'bg-dark-card border border-orange-500/30 text-orange-400 hover:bg-orange-500/10'
+            }`}
+          >
+            <Bug className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            BUGS
+            {bugReports.filter(b => b.status === 'open').length > 0 && (
+              <span className="bg-orange-500/30 px-1.5 py-0.5 rounded text-[10px]">
+                {bugReports.filter(b => b.status === 'open').length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -2641,6 +2671,83 @@ export const Admin = () => {
               </table>
               {promoCodes.length === 0 && <p className="text-white/30 text-xs font-mono py-4 text-center">No promo codes yet. Create one above.</p>}
             </div>
+          </div>
+        )}
+
+        {/* Bug Reports Tab */}
+        {(activeTab as string) === 'bugs' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white font-mono">[ BUG REPORTS ]</h2>
+              <button type="button" onClick={fetchBugReports} className="flex items-center gap-2 px-3 py-1.5 bg-orange-500/20 border border-orange-500/40 text-orange-400 font-mono text-xs rounded-lg hover:bg-orange-500/30 transition-all">
+                <RefreshCw className="w-3.5 h-3.5" /> REFRESH
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs font-mono">
+                <thead>
+                  <tr className="text-white/40 border-b border-white/10">
+                    <th className="text-left py-2 px-2">SEVERITY</th>
+                    <th className="text-left py-2 px-2">TITLE</th>
+                    <th className="text-left py-2 px-2">REPORTER</th>
+                    <th className="text-left py-2 px-2">PAGE</th>
+                    <th className="text-left py-2 px-2">STATUS</th>
+                    <th className="text-left py-2 px-2">DATE</th>
+                    <th className="text-left py-2 px-2">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bugReports.map(b => (
+                    <tr key={b.id} className="border-b border-white/5 hover:bg-white/5">
+                      <td className="py-2 px-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono ${
+                          b.severity === 'high' ? 'bg-red-500/20 text-red-400' :
+                          b.severity === 'medium' ? 'bg-orange-500/20 text-orange-400' :
+                          'bg-cyan-500/20 text-cyan-400'
+                        }`}>{b.severity}</span>
+                      </td>
+                      <td className="py-2 px-2">
+                        <div className="text-white max-w-[180px] truncate">{b.title}</div>
+                        <div className="text-white/30 text-[10px] max-w-[180px] truncate mt-0.5">{b.description}</div>
+                      </td>
+                      <td className="py-2 px-2 text-white/50">
+                        {b.user_name || b.user_email || <span className="text-white/20">Guest</span>}
+                      </td>
+                      <td className="py-2 px-2 text-cyan-400/60 max-w-[100px] truncate">{b.page_url || '—'}</td>
+                      <td className="py-2 px-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] ${b.status === 'open' ? 'bg-orange-500/20 text-orange-400' : 'bg-green-500/20 text-green-400'}`}>
+                          {b.status}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2 text-white/40">{new Date(b.created_at).toLocaleDateString()}</td>
+                      <td className="py-2 px-2">
+                        <div className="flex gap-2">
+                          <button type="button" onClick={async () => {
+                            const token = localStorage.getItem('token');
+                            const newStatus = b.status === 'open' ? 'resolved' : 'open';
+                            const res = await fetch(`${API_URL}/api/admin/bugs/${b.id}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, credentials: 'include', body: JSON.stringify({ status: newStatus }) });
+                            const data = await res.json();
+                            if (data.success) { toast.success(`Marked ${newStatus}`); fetchBugReports(); }
+                          }} className={b.status === 'open' ? 'text-green-400 hover:text-green-300' : 'text-orange-400 hover:text-orange-300'}>
+                            {b.status === 'open' ? 'Resolve' : 'Reopen'}
+                          </button>
+                          <button type="button" onClick={async () => {
+                            if (!confirm('Delete this bug report?')) return;
+                            const token = localStorage.getItem('token');
+                            const res = await fetch(`${API_URL}/api/admin/bugs/${b.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
+                            const data = await res.json();
+                            if (data.success) { toast.success('Deleted'); fetchBugReports(); }
+                          }} className="text-red-400 hover:text-red-300">Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {bugReports.length === 0 && <p className="text-white/30 text-xs font-mono py-4 text-center">No bug reports yet.</p>}
+            </div>
+            <p className="text-white/20 text-[10px] font-mono">Reports older than 60 days are automatically deleted.</p>
           </div>
         )}
 

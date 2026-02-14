@@ -1461,4 +1461,44 @@ router.delete('/promo/:id', async (req: Request, res: Response) => {
   }
 });
 
+// ── BUG REPORTS ──────────────────────────────────────────────────────────────
+
+// GET /admin/bugs — list all bug reports, auto-delete ones older than 60 days
+router.get('/bugs', async (_req: Request, res: Response) => {
+  try {
+    await pool.query(`DELETE FROM bug_reports WHERE created_at < NOW() - INTERVAL '60 days'`);
+    const result = await pool.query(
+      `SELECT id, user_email, user_name, title, description, page_url, severity, status, created_at
+       FROM bug_reports ORDER BY created_at DESC`
+    );
+    res.json({ success: true, data: result.rows });
+  } catch {
+    res.status(500).json({ success: false, error: 'Failed to fetch bug reports' });
+  }
+});
+
+// PATCH /admin/bugs/:id/status — toggle open/resolved
+router.patch('/bugs/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { status } = req.body;
+    if (!['open', 'resolved'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'Invalid status' });
+    }
+    await pool.query(`UPDATE bug_reports SET status = $1 WHERE id = $2`, [status, req.params.id]);
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ success: false, error: 'Failed to update status' });
+  }
+});
+
+// DELETE /admin/bugs/:id
+router.delete('/bugs/:id', async (req: Request, res: Response) => {
+  try {
+    await pool.query(`DELETE FROM bug_reports WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ success: false, error: 'Failed to delete bug report' });
+  }
+});
+
 export default router;

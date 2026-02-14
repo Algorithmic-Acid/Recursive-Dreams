@@ -19,6 +19,7 @@ import downloadRoutes from './routes/downloads';
 import blogRoutes from './routes/blog';
 import profileRoutes from './routes/profile';
 import promoRoutes from './routes/promo';
+import bugRoutes from './routes/bugs';
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
@@ -89,6 +90,7 @@ app.use('/api/downloads', downloadRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/promo', promoRoutes);
+app.use('/api/bugs', bugRoutes);
 
 // Avatar uploads - serve profile pictures
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/home/wes/voidvendor-uploads/avatars';
