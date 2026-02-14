@@ -8,7 +8,7 @@ import { CartSidebar } from './components/CartSidebar';
 import { Checkout } from './components/Checkout';
 import { Footer } from './components/Footer';
 import { AuthModal } from './components/AuthModal';
-import { FreeVSTSection } from './components/FreeVSTSection';
+
 import { About, Admin, Contact, Donate, Downloads, FAQ, ForgotPassword, Forum, MyPurchases, Privacy, ProductDetail, ResetPassword, Terms, UserProfile } from './pages';
 import { Product, ProductCategory } from './types';
 import { productAPI } from './services/api';
@@ -210,9 +210,6 @@ function HomePage() {
       </div>
 
       <Hero />
-
-      {/* Free VST Section */}
-      <FreeVSTSection />
 
       {/* Products Section */}
       <section id="products" className="container mx-auto px-3 sm:px-4 py-8 sm:py-10 md:py-12">
