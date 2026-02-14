@@ -1,11 +1,12 @@
 import { ShoppingCart, Search, Zap, User, LogOut, Menu, X, Shield, Download, Package, Heart, MessageSquare, Bug } from 'lucide-react';
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { ProductCategory } from '../types';
 import { useCartStore } from '../store/cartStore';
 import { useAuthStore } from '../store/authStore';
 import { Avatar } from './Avatar';
-import { BugReportModal } from './BugReportModal';
+
+const BugReportModal = lazy(() => import('./BugReportModal').then(m => ({ default: m.BugReportModal })));
 
 interface HeaderProps {
   onCategoryChange: (category: ProductCategory | 'all') => void;
@@ -324,7 +325,7 @@ export const Header = ({ onCategoryChange, onSearch, onCartClick, user, isAdmin,
       </div>
     </header>
 
-    {bugModalOpen && <BugReportModal onClose={() => setBugModalOpen(false)} />}
+    {bugModalOpen && <Suspense fallback={null}><BugReportModal onClose={() => setBugModalOpen(false)} /></Suspense>}
   </>
   );
 };
