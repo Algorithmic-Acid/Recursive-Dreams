@@ -1,0 +1,55 @@
+name: Deploy to Void Vendor Pi
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── BACKEND ────────────────────────────────────────────────
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Build backend (TypeScript)
+        working-directory: backend
+        run: npm run build
+
+      - name: Deploy backend files
+        run: |
+          sudo cp -r backend/src/* /home/wes/voidvendor/backend/src/
+          sudo cp -r backend/dist/* /home/wes/voidvendor/backend/dist/
+          sudo cp backend/package.json /home/wes/voidvendor/backend/package.json
+          sudo chown -R wes:wes /home/wes/voidvendor/backend/src/ /home/wes/voidvendor/backend/dist/
+
+      - name: Restart API
+        run: pm2 restart api --update-env
+
+      # ── FRONTEND ───────────────────────────────────────────────
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend (Vite)
+        working-directory: frontend
+        run: npm run build
+
+      - name: Deploy frontend to Nginx
+        run: |
+          sudo rm -rf /home/wes/voidvendor-frontend/*
+          sudo cp -r frontend/dist/* /home/wes/voidvendor-frontend/
+          sudo chown -R www-data:www-data /home/wes/voidvendor-frontend/
+          sudo rm -rf /var/cache/nginx/* 2>/dev/null || true
+          sudo systemctl reload nginx
+
+      # ── VERIFY ─────────────────────────────────────────────────
+      - name: Verify API is running
+        run: pm2 status api
