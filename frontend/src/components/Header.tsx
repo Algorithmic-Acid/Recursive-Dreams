@@ -45,163 +45,116 @@ export const Header = ({ onCategoryChange, onSearch, onCartClick, user, isAdmin,
     <>
     <header className="sticky top-0 z-50 bg-dark-card/95 backdrop-blur-md shadow-lg border-b border-cyan-500/20">
       <div className="container mx-auto px-3 sm:px-4">
-        {/* Main Header Row */}
-        <div className="flex items-center justify-between py-3 sm:py-4">
+
+        {/* Single main row */}
+        <div className="flex items-center gap-2 sm:gap-3 h-14 sm:h-16">
+
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 sm:gap-3 no-underline">
-            <Zap className="w-6 h-6 sm:w-8 sm:h-8 text-cyan-400 animate-pulse" />
-            <div className="flex flex-col">
-              <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 bg-clip-text text-transparent tracking-wider">
-                VOID VENDOR<sup className="text-[8px] sm:text-[10px] lg:text-xs align-super ml-0.5">™</sup>
+          <Link to="/" className="flex items-center gap-2 shrink-0 no-underline">
+            <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400 animate-pulse" />
+            <div className="flex flex-col leading-none">
+              <h1 className="text-base sm:text-xl font-bold bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 bg-clip-text text-transparent tracking-wider whitespace-nowrap">
+                VOID VENDOR<sup className="text-[7px] align-super ml-0.5">™</sup>
               </h1>
-              <span className="text-[8px] sm:text-[10px] text-cyan-400/60 tracking-[0.2em] font-light">虚空販売 ・ ボイドベンダー</span>
+              <span className="hidden sm:block text-[8px] text-cyan-400/50 tracking-[0.2em] font-light">虚空販売 ・ ボイドベンダー</span>
             </div>
-            <div className="hidden lg:block text-xs text-cyan-400/70 font-mono">[ ONLINE ]</div>
           </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden lg:flex gap-4 xl:gap-6">
+          {/* Desktop Navigation — center */}
+          <nav className="hidden lg:flex items-center gap-0.5 flex-1 justify-center">
             {categories.map((cat) => (
               <button
                 key={cat.value}
                 type="button"
                 onClick={() => onCategoryChange(cat.value)}
-                className="text-white hover:text-cyan-400 transition-colors font-medium text-sm xl:text-base"
+                className="px-2.5 py-1.5 rounded-md text-white/70 hover:text-white hover:bg-white/8 transition-all text-sm font-medium whitespace-nowrap"
               >
                 {cat.label}
               </button>
             ))}
-            <Link
-              to="/forum"
-              className="flex items-center gap-1 text-purple-400 hover:text-purple-300 transition-colors font-medium text-sm xl:text-base"
-            >
-              <MessageSquare className="w-4 h-4" />
-              Forum
+
+            {/* Divider */}
+            <span className="w-px h-4 bg-white/15 mx-2 shrink-0" />
+
+            <Link to="/forum" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 transition-all text-sm font-medium">
+              <MessageSquare className="w-3.5 h-3.5" />Forum
             </Link>
-            <Link
-              to="/downloads"
-              className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 transition-colors font-medium text-sm xl:text-base"
-            >
-              <Download className="w-4 h-4" />
-              Free
+            <Link to="/downloads" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-all text-sm font-medium">
+              <Download className="w-3.5 h-3.5" />Free
             </Link>
-            <Link
-              to="/donate"
-              className="flex items-center gap-1 text-pink-400 hover:text-pink-300 transition-colors font-medium text-sm xl:text-base"
-            >
-              <Heart className="w-4 h-4" />
-              Donate
+            <Link to="/donate" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-pink-400 hover:text-pink-300 hover:bg-pink-500/10 transition-all text-sm font-medium">
+              <Heart className="w-3.5 h-3.5" />Donate
             </Link>
-            <button
-              type="button"
-              onClick={() => setBugModalOpen(true)}
-              className="flex items-center gap-1 text-orange-400 hover:text-orange-300 transition-colors font-medium text-sm xl:text-base"
-            >
+            <button type="button" onClick={() => setBugModalOpen(true)} title="Report a bug"
+              className="p-1.5 rounded-md text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 transition-all">
               <Bug className="w-4 h-4" />
-              Report Bug
             </button>
           </nav>
 
-          {/* Right Side - Auth & Cart */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Desktop Auth */}
+          {/* Right side — Search + Auth + Cart */}
+          <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
+
+            {/* Inline search */}
+            <form onSubmit={handleSearch} className="hidden md:flex items-center">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full hover:border-cyan-500/40 focus-within:border-cyan-500/60 focus-within:bg-white/8 transition-all">
+                <Search className="w-3.5 h-3.5 text-white/40 shrink-0" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch(e as any)}
+                  placeholder="Search..."
+                  className="bg-transparent text-white text-sm w-28 focus:w-40 focus:outline-none placeholder-white/30 transition-all duration-300"
+                />
+              </div>
+            </form>
+
+            {/* Auth */}
             {user ? (
-              <div className="hidden sm:flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-1.5">
                 {isAdmin && (
-                  <Link
-                    to="/admin"
-                    className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-purple-500/20 border border-purple-500/40 rounded-full text-purple-400 hover:bg-purple-500/30 hover:text-purple-300 transition-all"
-                  >
-                    <Shield className="w-3 h-3 sm:w-4 sm:h-4" />
-                    <span className="text-xs sm:text-sm font-mono">ADMIN</span>
+                  <Link to="/admin" className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-500/20 border border-purple-500/40 rounded-full text-purple-400 hover:bg-purple-500/30 transition-all text-xs font-mono">
+                    <Shield className="w-3 h-3" />ADMIN
                   </Link>
                 )}
-                <Link
-                  to="/my-purchases"
-                  className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-green-500/20 border border-green-500/40 rounded-full text-green-400 hover:bg-green-500/30 hover:text-green-300 transition-all"
-                >
-                  <Package className="w-3 h-3 sm:w-4 sm:h-4" />
-                  <span className="text-xs sm:text-sm font-mono">PURCHASES</span>
+                <Link to="/my-purchases" className="hidden xl:flex items-center gap-1 px-2.5 py-1.5 bg-green-500/20 border border-green-500/40 rounded-full text-green-400 hover:bg-green-500/30 transition-all text-xs font-mono">
+                  <Package className="w-3 h-3" />ORDERS
                 </Link>
-                <Link
-                  to="/profile"
-                  className="hidden md:flex items-center gap-2 px-2 sm:px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 rounded-full hover:border-cyan-400 transition-all"
-                >
+                <Link to="/profile" className="hidden md:flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 bg-cyan-500/10 border border-cyan-500/30 rounded-full hover:border-cyan-400 transition-all">
                   <Avatar src={authUser?.avatarUrl} name={user.name} size="sm" />
-                  <span className="text-xs sm:text-sm text-cyan-400 font-mono truncate max-w-[80px] sm:max-w-[120px]">{user.name}</span>
+                  <span className="text-xs text-cyan-400 font-mono truncate max-w-[90px]">{user.name}</span>
                 </Link>
-                <button
-                  type="button"
-                  onClick={onLogout}
-                  className="p-1.5 sm:p-2 text-gray-400 hover:text-cyan-400 transition-colors"
-                  aria-label="Logout"
-                >
-                  <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+                <button type="button" onClick={onLogout} className="p-1.5 text-white/40 hover:text-cyan-400 transition-colors" aria-label="Logout">
+                  <LogOut className="w-4 h-4" />
                 </button>
               </div>
             ) : (
-              <div className="hidden sm:flex items-center gap-1 sm:gap-2">
-                <button
-                  type="button"
-                  onClick={onLogin}
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-cyan-400 hover:text-cyan-300 transition-colors font-mono text-xs sm:text-sm"
-                >
+              <div className="hidden sm:flex items-center gap-1.5">
+                <button type="button" onClick={onLogin} className="px-3 py-1.5 text-cyan-400 hover:text-cyan-300 font-mono text-xs transition-colors">
                   LOGIN
                 </button>
-                <button
-                  type="button"
-                  onClick={onRegister}
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-mono text-xs sm:text-sm rounded hover:shadow-[0_0_20px_rgba(0,255,255,0.5)] transition-all"
-                >
+                <button type="button" onClick={onRegister} className="px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-mono text-xs rounded-full hover:shadow-[0_0_15px_rgba(0,255,255,0.4)] transition-all">
                   REGISTER
                 </button>
               </div>
             )}
 
-            {/* Cart Button */}
-            <button
-              type="button"
-              onClick={onCartClick}
-              className="relative p-1.5 sm:p-2 hover:scale-110 transition-transform"
-            >
-              <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            {/* Cart */}
+            <button type="button" onClick={onCartClick} className="relative p-1.5 hover:scale-110 transition-transform">
+              <ShoppingCart className="w-5 h-5 text-white" />
               {itemCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-xs font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs">
+                <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
                   {itemCount}
                 </span>
               )}
             </button>
 
             {/* Mobile Menu Toggle */}
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-1.5 sm:p-2 text-white hover:text-cyan-400 transition-colors"
-              aria-label="Toggle menu"
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
+            <button type="button" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="lg:hidden p-1.5 text-white hover:text-cyan-400 transition-colors" aria-label="Toggle menu">
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
-        </div>
-
-        {/* Search Bar */}
-        <div className="pb-3 sm:pb-4">
-          <form onSubmit={handleSearch} className="flex gap-2 max-w-2xl mx-auto">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search products..."
-              className="flex-1 px-3 sm:px-4 py-2 rounded-full bg-white/10 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base"
-            />
-            <button
-              type="submit"
-              className="px-3 sm:px-6 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 rounded-full text-white font-medium transition-all flex items-center gap-1 sm:gap-2 text-sm sm:text-base"
-            >
-              <Search className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline">Search</span>
-            </button>
-          </form>
         </div>
 
         {/* Mobile Menu */}
