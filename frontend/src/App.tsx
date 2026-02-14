@@ -175,6 +175,8 @@ function HomePage() {
               <span className="text-white/20">//</span>
               <span>STAY TUNED TO THE VOID</span>
               <span className="text-white/20">//</span>
+              <span className="text-yellow-300 font-bold">🎟 USE CODE <span className="text-pink-400 tracking-widest">LUCY419</span> FOR 50% OFF — 2 USES PER CUSTOMER — ENDS MARCH 17TH</span>
+              <span className="text-white/20">//</span>
             </span>
           ))}
         </div>
